@@ -1,0 +1,23 @@
+object frmrotulo: Tfrmrotulo
+  Left = 317
+  Height = 59
+  Top = 908
+  Width = 1175
+  Caption = 'frmrotulo'
+  ClientHeight = 59
+  ClientWidth = 1175
+  LCLVersion = '3.6.0.0'
+  object Label1: TLabel
+    Left = 0
+    Height = 59
+    Top = 0
+    Width = 1175
+    Align = alClient
+    Alignment = taCenter
+    Font.CharSet = ANSI_CHARSET
+    Font.Height = -24
+    Font.Pitch = fpVariable
+    Font.Quality = fqDraft
+    ParentFont = False
+  end
+end

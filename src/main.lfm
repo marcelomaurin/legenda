@@ -1,0 +1,29 @@
+object frmmain: Tfrmmain
+  Left = 661
+  Height = 240
+  Top = 270
+  Width = 320
+  Caption = 'Tela principal'
+  ClientHeight = 240
+  ClientWidth = 320
+  OnCreate = FormCreate
+  LCLVersion = '3.6.0.0'
+  object ToggleBox1: TToggleBox
+    Left = 8
+    Height = 25
+    Top = 23
+    Width = 129
+    Caption = 'Legenda'
+    TabOrder = 0
+    OnChange = ToggleBox1Change
+  end
+  object Button1: TButton
+    Left = 168
+    Height = 25
+    Top = 23
+    Width = 130
+    Caption = 'Texto Completo'
+    TabOrder = 1
+    OnClick = Button1Click
+  end
+end

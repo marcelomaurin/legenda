@@ -42,7 +42,7 @@ TD_LEGENDA=Install LEGENDA
 [Files]
 ; Executável principal
 Source: "D:\projetos\maurinsoft\legenda\src\legenda.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "D:\projetos\maurinsoft\legenda\src\srvouve.exe"; DestDir: "{app}"; Flags: ignoreversion
+;Source: "D:\projetos\maurinsoft\legenda\src\srvouve.exe"; DestDir: "{app}"; Flags: ignoreversion
 
 
 [Icons]

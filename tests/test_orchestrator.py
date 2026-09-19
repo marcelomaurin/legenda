@@ -44,6 +44,25 @@ class OrchestratorTests(unittest.TestCase):
             self.assertEqual(generated["input_device_index"], 3)
             self.assertTrue(str(orchestrator.instances[0].config_path).startswith(str(root)))
 
+            status = orchestrator.status_snapshot()
+            self.assertEqual(status["type"], "orchestrator_status")
+            self.assertEqual(len(status["instances"]), 1)
+            self.assertEqual(status["instances"][0]["name"], "sala1")
+            self.assertFalse(status["instances"][0]["running"])
+            self.assertTrue(status["instances"][0]["desired_running"])
+
+    def test_stop_marks_instance_as_not_desired(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "instances.json").write_text(json.dumps({
+                "instances": [{"name": "sala1", "overrides": {}}]
+            }), encoding="utf-8")
+
+            orchestrator = Orchestrator(root / "instances.json")
+            instance = orchestrator.instances[0]
+            orchestrator.stop(instance, disable_restart=True)
+            self.assertFalse(instance.desired_running)
+
 
 if __name__ == "__main__":
     unittest.main()

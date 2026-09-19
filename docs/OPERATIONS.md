@@ -257,3 +257,55 @@ Esse teste valida:
 
 O CI também executa um teste de integração de rede em loopback que recebe três
 eventos JSONL completos e valida sequência, sessão e versão do protocolo.
+
+
+## 9. Soak test sintético do protocolo
+
+Para testar volume sem microfone nem STT:
+
+```bash
+python bin/protocol_soak.py --events 10000 --payload-size 128
+```
+
+O teste abre um socket TCP real em loopback, transmite `CaptionEvent v2` em
+JSONL e valida:
+
+- quantidade enviada/recebida;
+- perda;
+- sequência;
+- framing por LF;
+- JSON válido;
+- versão do protocolo;
+- tipo de evento;
+- erros de envio;
+- throughput em eventos/s.
+
+O CI executa uma versão reduzida com 1.000 eventos em cada suíte.
+
+## 10. Release readiness
+
+Antes de criar uma tag:
+
+```bash
+python bin/release_readiness.py
+```
+
+Para saída processável:
+
+```bash
+python bin/release_readiness.py --json
+```
+
+A verificação cobre:
+
+- arquivos essenciais;
+- workflows Linux/Windows;
+- exemplos Caddy/Nginx;
+- autenticação de sala ativa no exemplo;
+- timeout WebSocket;
+- retenção ativa;
+- control plane em loopback;
+- token de controle definido;
+- `config.json`, `instances.json` e `nodes.json` fora do Git.
+
+Uma falha retorna exit code 2 e deve bloquear a criação da release candidate.

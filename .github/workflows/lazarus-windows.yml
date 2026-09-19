@@ -12,6 +12,7 @@ on:
 jobs:
   build-windows:
     runs-on: windows-latest
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
@@ -19,7 +20,7 @@ jobs:
       - name: Instalar Lazarus
         shell: pwsh
         run: |
-          choco install lazarus -y --no-progress
+          choco install lazarus --version=4.0.0 -y --no-progress
           Import-Module "$env:ChocolateyInstall\helpers\chocolateyProfile.psm1"
           refreshenv
           $laz = Get-Command lazbuild -ErrorAction SilentlyContinue

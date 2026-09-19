@@ -9,7 +9,10 @@ import socket
 import threading
 import time
 
-from mock_caption_server import caption_event
+try:
+    from .mock_caption_server import caption_event
+except ImportError:
+    from mock_caption_server import caption_event
 
 
 def run_soak(events: int, payload_size: int = 0) -> dict:

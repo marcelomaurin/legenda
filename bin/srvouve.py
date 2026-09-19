@@ -565,7 +565,8 @@ class CaptionServer:
             payload["room"] = self.room_id
             payload["room_name"] = self.room_name
             payload["source_language"] = source_language
-            payload["language"] = target_language
+            payload["requested_language"] = target_language
+            payload["language"] = source_language
             payload["translated"] = False
 
             if target_normalized != source_normalized:
@@ -577,6 +578,7 @@ class CaptionServer:
                     )
                     payload["original_text"] = event.text
                     payload["text"] = translated
+                    payload["language"] = target_language
                     payload["translated"] = translated != event.text
                 except Exception as exc:
                     self.telemetry.record_translation_error()

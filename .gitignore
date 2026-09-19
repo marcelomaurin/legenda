@@ -9,3 +9,5 @@ src/backup/
 benchmark_results/
 benchmark_samples/
 .runtime/
+corpus/audio/
+corpus/manifest.jsonl

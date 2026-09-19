@@ -1515,3 +1515,30 @@ Para descartar ajustes runtime e reconstruir tudo a partir de
 ```
 
 Depois da primeira inicialização com essa opção, volte o valor para `false`.
+
+
+## Observação de segurança do TCP legado
+
+A autenticação por token protege o WebSocket e os serviços administrativos, mas
+a porta TCP usada pelo cliente Lazarus legado mantém compatibilidade com o
+protocolo existente e **não possui autenticação própria**.
+
+Quando o servidor estiver com:
+
+```json
+"host": "0.0.0.0"
+```
+
+a porta TCP deve ser considerada acessível à rede onde o host está conectado.
+
+Em ambientes não confiáveis, utilize uma das opções:
+
+- firewall permitindo apenas os clientes Lazarus autorizados;
+- VPN entre cliente e servidor;
+- bind em interface/endereço restrito;
+- proxy/túnel seguro para transportar a conexão.
+
+Não publique a porta TCP 8097 diretamente na Internet.
+
+O WebSocket, que possui autenticação de sala, deve ser preferido para novos
+clientes.

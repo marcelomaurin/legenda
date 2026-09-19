@@ -1062,3 +1062,81 @@ sudo journalctl -u legenda-orchestrator -f
 
 O arquivo real `instances.json` é ignorado pelo Git porque pode conter token de
 controle e configuração específica de hardware.
+
+
+## Coleta assistida do corpus pelo navegador
+
+Foram adicionados:
+
+```text
+bin/corpus_collection_server.py
+web/corpus.html
+```
+
+O servidor de coleta usa, por padrão:
+
+```text
+127.0.0.1:8060
+```
+
+Para iniciar:
+
+```bash
+python bin/corpus_collection_server.py \
+  --corpus-dir corpus \
+  --host 127.0.0.1 \
+  --port 8060 \
+  --token TOKEN-DE-COLETA
+```
+
+Sirva a pasta web:
+
+```bash
+python -m http.server 8080 -d web
+```
+
+Abra:
+
+```text
+http://127.0.0.1:8080/corpus.html?api=http://127.0.0.1:8060#token=TOKEN-DE-COLETA
+```
+
+A página:
+
+- carrega as referências cadastradas;
+- permite filtrar por categoria;
+- mostra frase, ID e locutor pseudônimo;
+- solicita acesso ao microfone;
+- grava a fala;
+- converte o áudio localmente para WAV mono PCM 16-bit em 16 kHz;
+- permite ouvir antes de salvar;
+- permite refazer;
+- envia o WAV para a categoria/ID corretos;
+- mostra o progresso de coleta por categoria;
+- marca amostras já gravadas.
+
+O servidor só aceita uploads cujo `category` e `id` existam nas referências
+do corpus e limita cada upload a 20 MB.
+
+### Endpoints
+
+```text
+GET  /api/health
+GET  /api/references
+POST /api/audio/<category>/<id>
+```
+
+Quando um token é configurado, use:
+
+```text
+Authorization: Bearer TOKEN-DE-COLETA
+```
+
+### Microfone e HTTPS
+
+Em `localhost`, os navegadores normalmente permitem acesso ao microfone em
+contexto local. Ao abrir a página a partir de outro computador ou hostname,
+navegadores modernos geralmente exigem HTTPS para `getUserMedia`.
+
+Portanto, para coleta remota, publique a interface por HTTPS ou use um túnel/VPN
+com terminação TLS. Não exponha diretamente a API de coleta sem autenticação.

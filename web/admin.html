@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Legenda v2 — Administração</title>
+  <style>
+    :root { color-scheme: light dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: Canvas;
+      color: CanvasText;
+    }
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: Canvas;
+      border-bottom: 1px solid color-mix(in srgb, CanvasText 18%, transparent);
+      padding: 1rem 1.25rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    main {
+      width: min(1400px, 96vw);
+      margin: 1.25rem auto 3rem;
+    }
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: .5rem;
+      font-weight: 700;
+    }
+    .dot {
+      width: .8rem;
+      height: .8rem;
+      border-radius: 50%;
+      background: #777;
+    }
+    .online .dot { background: #1a9b4b; }
+    .offline .dot { background: #c53333; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+    .card, .panel {
+      border: 1px solid color-mix(in srgb, CanvasText 18%, transparent);
+      border-radius: .8rem;
+      padding: 1rem;
+      background: color-mix(in srgb, Canvas 96%, CanvasText 4%);
+    }
+    .card .value {
+      font-size: clamp(1.6rem, 4vw, 2.6rem);
+      font-weight: 800;
+      margin-top: .35rem;
+    }
+    .muted { opacity: .7; }
+    .panel { margin-top: 1rem; }
+    .panel h2 { margin-top: 0; }
+    .rows {
+      display: grid;
+      grid-template-columns: minmax(160px, 1fr) 2fr;
+      gap: .5rem 1rem;
+    }
+    .meter {
+      height: .8rem;
+      border-radius: 999px;
+      background: color-mix(in srgb, CanvasText 12%, transparent);
+      overflow: hidden;
+      margin-top: .35rem;
+    }
+    .meter > span {
+      display: block;
+      height: 100%;
+      width: 0;
+      background: currentColor;
+      opacity: .55;
+      transition: width .2s ease;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th, td {
+      text-align: left;
+      padding: .55rem .4rem;
+      border-bottom: 1px solid color-mix(in srgb, CanvasText 12%, transparent);
+    }
+    #error {
+      display: none;
+      padding: 1rem;
+      border: 1px solid currentColor;
+      border-radius: .7rem;
+      margin-bottom: 1rem;
+    }
+  </style>
+</head>
+<body>
+<header>
+  <div>
+    <strong>Legenda v2 — Administração</strong>
+    <div class="muted" id="roomInfo">Sala: —</div>
+  </div>
+  <div id="status" class="status offline">
+    <span class="dot"></span>
+    <span id="statusText">Desconectado</span>
+  </div>
+</header>
+
+<main>
+  <div id="error" role="alert"></div>
+
+  <section class="grid" aria-label="Indicadores principais">
+    <div class="card">
+      <div class="muted">Clientes web</div>
+      <div class="value" id="webClients">0</div>
+    </div>
+    <div class="card">
+      <div class="muted">Clientes TCP</div>
+      <div class="value" id="tcpClients">0</div>
+    </div>
+    <div class="card">
+      <div class="muted">Legendas finais</div>
+      <div class="value" id="finalEvents">0</div>
+    </div>
+    <div class="card">
+      <div class="muted">Latência média STT</div>
+      <div class="value" id="latencyAvg">—</div>
+    </div>
+    <div class="card">
+      <div class="muted">Latência P95 STT</div>
+      <div class="value" id="latencyP95">—</div>
+    </div>
+    <div class="card">
+      <div class="muted">Uptime</div>
+      <div class="value" id="uptime">—</div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Filas</h2>
+    <div class="rows">
+      <div>Eventos</div>
+      <div>
+        <span id="eventsQueueText">0 / 0</span>
+        <div class="meter"><span id="eventsQueueMeter"></span></div>
+      </div>
+      <div>Transcrição STT</div>
+      <div>
+        <span id="sttQueueText">0 / 0</span>
+        <div class="meter"><span id="sttQueueMeter"></span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Processo</h2>
+    <div class="rows">
+      <div>Engine</div><div id="engine">—</div>
+      <div>CPU</div><div id="cpu">—</div>
+      <div>Memória</div><div id="memory">—</div>
+      <div>Erros STT</div><div id="sttErrors">0</div>
+      <div>Erros de tradução</div><div id="translationErrors">0</div>
+      <div>Parciais descartados</div><div id="droppedPartials">0</div>
+      <div>Eventos descartados</div><div id="droppedEvents">0</div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Participantes por idioma</h2>
+    <table>
+      <thead><tr><th>Idioma</th><th>Quantidade</th></tr></thead>
+      <tbody id="languageRows"><tr><td colspan="2">Sem dados</td></tr></tbody>
+    </table>
+  </section>
+
+  <section class="panel">
+    <h2>Participantes por papel</h2>
+    <table>
+      <thead><tr><th>Papel</th><th>Quantidade</th></tr></thead>
+      <tbody id="roleRows"><tr><td colspan="2">Sem dados</td></tr></tbody>
+    </table>
+  </section>
+</main>
+
+<script>
+  const $ = selector => document.querySelector(selector);
+  const status = $("#status");
+  const statusText = $("#statusText");
+  const errorBox = $("#error");
+
+  let reconnectEnabled = true;
+  let retryTimer = null;
+  let socket = null;
+
+  function params() {
+    const query = new URLSearchParams(location.search);
+    const hash = new URLSearchParams(location.hash.replace(/^#/, ""));
+    return {
+      host: query.get("host") || location.hostname || "127.0.0.1",
+      port: query.get("port") || "8098",
+      room: query.get("room") || "principal",
+      token: hash.get("token") || ""
+    };
+  }
+
+  function wsUrl() {
+    const p = params();
+    const proto = location.protocol === "https:" ? "wss" : "ws";
+    return `${proto}://${p.host}:${p.port}`;
+  }
+
+  function setStatus(online, text) {
+    status.className = "status " + (online ? "online" : "offline");
+    statusText.textContent = text || (online ? "Online" : "Desconectado");
+  }
+
+  function showError(message) {
+    errorBox.textContent = message;
+    errorBox.style.display = "block";
+  }
+
+  function fmtDuration(seconds) {
+    const s = Math.max(0, Number(seconds || 0));
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = Math.floor(s % 60);
+    return [h, m, sec].map(v => String(v).padStart(2, "0")).join(":");
+  }
+
+  function setMeter(id, size, capacity) {
+    const pct = capacity > 0 ? Math.min(100, (size / capacity) * 100) : 0;
+    $(id).style.width = pct + "%";
+  }
+
+  function fillTable(id, data) {
+    const body = $(id);
+    body.replaceChildren();
+    const entries = Object.entries(data || {}).sort((a, b) => b[1] - a[1]);
+    if (!entries.length) {
+      const row = document.createElement("tr");
+      const cell = document.createElement("td");
+      cell.colSpan = 2;
+      cell.textContent = "Sem dados";
+      row.appendChild(cell);
+      body.appendChild(row);
+      return;
+    }
+    for (const [name, count] of entries) {
+      const row = document.createElement("tr");
+      const a = document.createElement("td");
+      const b = document.createElement("td");
+      a.textContent = name;
+      b.textContent = count;
+      row.append(a, b);
+      body.appendChild(row);
+    }
+  }
+
+  function render(data) {
+    $("#webClients").textContent = data.clients?.websocket ?? 0;
+    $("#tcpClients").textContent = data.clients?.tcp ?? 0;
+    $("#finalEvents").textContent = data.events?.final ?? 0;
+    $("#latencyAvg").textContent = data.stt?.latency_avg_ms == null
+      ? "—" : Math.round(data.stt.latency_avg_ms) + " ms";
+    $("#latencyP95").textContent = data.stt?.latency_p95_ms == null
+      ? "—" : data.stt.latency_p95_ms + " ms";
+    $("#uptime").textContent = fmtDuration(data.uptime_seconds);
+    $("#engine").textContent = data.engine || "—";
+    $("#cpu").textContent = data.process?.cpu_percent == null
+      ? "indisponível" : data.process.cpu_percent + " %";
+    $("#memory").textContent = data.process?.memory_mb == null
+      ? "indisponível" : data.process.memory_mb + " MB";
+    $("#sttErrors").textContent = data.stt?.errors ?? 0;
+    $("#translationErrors").textContent = data.translation?.errors ?? 0;
+    $("#droppedPartials").textContent = data.stt?.dropped_partials ?? 0;
+    $("#droppedEvents").textContent = data.events?.dropped ?? 0;
+
+    const eq = data.queues?.events || {size: 0, capacity: 0};
+    const sq = data.queues?.stt || {size: 0, capacity: 0};
+    $("#eventsQueueText").textContent = `${eq.size} / ${eq.capacity}`;
+    $("#sttQueueText").textContent = `${sq.size} / ${sq.capacity}`;
+    setMeter("#eventsQueueMeter", eq.size, eq.capacity);
+    setMeter("#sttQueueMeter", sq.size, sq.capacity);
+
+    $("#roomInfo").textContent = `Sala: ${data.room_name || data.room || "—"} · Sessão: ${data.session_id || "—"}`;
+    fillTable("#languageRows", data.clients?.by_language);
+    fillTable("#roleRows", data.clients?.by_role);
+  }
+
+  function connect() {
+    clearTimeout(retryTimer);
+    const p = params();
+    const ws = new WebSocket(wsUrl());
+    socket = ws;
+    setStatus(false, "Conectando…");
+
+    ws.addEventListener("open", () => {
+      setStatus(false, "Autenticando…");
+      ws.send(JSON.stringify({
+        type: "auth",
+        room: p.room,
+        token: p.token,
+        language: "pt-BR"
+      }));
+    });
+
+    ws.addEventListener("message", event => {
+      let data;
+      try { data = JSON.parse(event.data); }
+      catch { return; }
+
+      if (data.type === "error") {
+        reconnectEnabled = false;
+        showError(data.message || "Acesso negado.");
+        setStatus(false, "Acesso negado");
+        ws.close();
+        return;
+      }
+
+      if (data.type === "welcome") {
+        if (data.role !== "admin") {
+          reconnectEnabled = false;
+          showError("Este convite não possui papel administrativo.");
+          setStatus(false, "Admin necessário");
+          ws.close();
+          return;
+        }
+        $("#roomInfo").textContent = `Sala: ${data.room_name || data.room} · Sessão: ${data.session_id}`;
+        ws.send(JSON.stringify({type: "subscribe_telemetry"}));
+        setStatus(true, "Monitorando");
+        return;
+      }
+
+      if (data.type === "telemetry") {
+        render(data);
+      }
+    });
+
+    ws.addEventListener("close", () => {
+      if (socket === ws) {
+        setStatus(false);
+        if (reconnectEnabled) retryTimer = setTimeout(connect, 2000);
+      }
+    });
+
+    ws.addEventListener("error", () => ws.close());
+  }
+
+  connect();
+</script>
+</body>
+</html>

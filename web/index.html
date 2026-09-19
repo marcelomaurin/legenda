@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Legenda ao vivo</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --font-size: clamp(2rem, 6vw, 5.5rem);
+      --panel-opacity: .90;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: Canvas;
+      color: CanvasText;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+    }
+
+    header, footer {
+      padding: .75rem 1rem;
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: .5rem;
+      font-weight: 650;
+    }
+
+    .dot {
+      width: .8rem;
+      height: .8rem;
+      border-radius: 50%;
+      background: #777;
+    }
+
+    .online .dot { background: #17a34a; }
+    .offline .dot { background: #c52b2b; }
+
+    main {
+      display: grid;
+      place-items: end center;
+      padding: 3vw;
+    }
+
+    #caption {
+      width: min(96vw, 1500px);
+      padding: .4em .6em;
+      border-radius: .35em;
+      background: color-mix(in srgb, Canvas 90%, transparent);
+      font-size: var(--font-size);
+      font-weight: 700;
+      line-height: 1.18;
+      text-align: center;
+      overflow-wrap: anywhere;
+      min-height: 2.4em;
+      display: grid;
+      place-items: center;
+    }
+
+    .controls {
+      display: flex;
+      gap: .5rem;
+      flex-wrap: wrap;
+    }
+
+    button, input {
+      font: inherit;
+      padding: .55rem .75rem;
+    }
+
+    button { cursor: pointer; }
+
+    @media (prefers-contrast: more) {
+      #caption { outline: .15em solid currentColor; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div id="status" class="status offline">
+      <span class="dot" aria-hidden="true"></span>
+      <span id="statusText">Desconectado</span>
+    </div>
+
+    <div class="controls" aria-label="Controles de legenda">
+      <button id="smaller" type="button" aria-label="Diminuir fonte">A−</button>
+      <button id="larger" type="button" aria-label="Aumentar fonte">A+</button>
+      <button id="fullscreen" type="button">Tela cheia</button>
+    </div>
+  </header>
+
+  <main aria-live="polite" aria-atomic="true">
+    <div id="caption">Aguardando legenda…</div>
+  </main>
+
+  <footer>
+    <span id="session">Sessão: —</span>
+    <span id="clock">—</span>
+  </footer>
+
+  <script>
+    const caption = document.querySelector("#caption");
+    const status = document.querySelector("#status");
+    const statusText = document.querySelector("#statusText");
+    const session = document.querySelector("#session");
+    const clock = document.querySelector("#clock");
+
+    let fontScale = 1;
+    let retryTimer = null;
+
+    function websocketUrl() {
+      const params = new URLSearchParams(location.search);
+      const host = params.get("host") || location.hostname || "127.0.0.1";
+      const port = params.get("port") || "8098";
+      const protocol = location.protocol === "https:" ? "wss" : "ws";
+      return `${protocol}://${host}:${port}`;
+    }
+
+    function setConnectionState(connected) {
+      status.className = "status " + (connected ? "online" : "offline");
+      statusText.textContent = connected ? "Ao vivo" : "Desconectado";
+    }
+
+    function connect() {
+      clearTimeout(retryTimer);
+      const ws = new WebSocket(websocketUrl());
+
+      ws.addEventListener("open", () => setConnectionState(true));
+
+      ws.addEventListener("message", event => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type !== "caption") return;
+
+          caption.textContent = data.text || "";
+          session.textContent = "Sessão: " + (data.session_id || "—");
+          clock.textContent = data.timestamp
+            ? new Date(data.timestamp).toLocaleTimeString()
+            : "—";
+        } catch (error) {
+          console.error("Evento inválido:", error);
+        }
+      });
+
+      ws.addEventListener("close", () => {
+        setConnectionState(false);
+        retryTimer = setTimeout(connect, 2000);
+      });
+
+      ws.addEventListener("error", () => ws.close());
+    }
+
+    document.querySelector("#larger").addEventListener("click", () => {
+      fontScale = Math.min(1.8, fontScale + .1);
+      caption.style.fontSize = `calc(var(--font-size) * ${fontScale})`;
+    });
+
+    document.querySelector("#smaller").addEventListener("click", () => {
+      fontScale = Math.max(.6, fontScale - .1);
+      caption.style.fontSize = `calc(var(--font-size) * ${fontScale})`;
+    });
+
+    document.querySelector("#fullscreen").addEventListener("click", async () => {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+      } else {
+        await document.exitFullscreen();
+      }
+    });
+
+    connect();
+  </script>
+</body>
+</html>

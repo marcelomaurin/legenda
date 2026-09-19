@@ -14,6 +14,11 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+try:
+    from .security_utils import bearer_matches, require_token_for_remote_bind
+except ImportError:
+    from security_utils import bearer_matches, require_token_for_remote_bind
+
 
 class Fleet:
     def __init__(self, config_path: Path) -> None:
@@ -84,7 +89,10 @@ def make_handler(fleet: Fleet):
         def _authorized(self) -> bool:
             if not fleet.api_token:
                 return True
-            return self.headers.get("Authorization", "") == f"Bearer {fleet.api_token}"
+            return bearer_matches(
+                self.headers.get("Authorization", ""),
+                fleet.api_token,
+            )
 
         def _json(self, status: int, payload: Any) -> None:
             body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -151,6 +159,7 @@ def main() -> None:
     args = parser.parse_args()
 
     fleet = Fleet(Path(args.config))
+    require_token_for_remote_bind(args.host, fleet.api_token, "fleet")
     server = ThreadingHTTPServer((args.host, args.port), make_handler(fleet))
     print(f"Fleet: http://{args.host}:{args.port} | nos={len(fleet.nodes)}")
     try:

@@ -23,6 +23,7 @@ from room_auth import RoomTokenManager
 from translation import create_translator, normalize_language
 from telemetry import Telemetry
 from audio_devices import list_input_devices
+from retention import cleanup_directory
 
 try:
     from websockets.sync.server import serve as websocket_serve
@@ -75,6 +76,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "export_subtitles": True,
     "save_session_audio": True,
     "transcript_dir": "transcripts",
+    "retention_days": 30,
 }
 
 
@@ -162,6 +164,15 @@ class CaptionServer:
 
         transcript_dir = Path(str(config["transcript_dir"]))
         transcript_dir.mkdir(parents=True, exist_ok=True)
+        retention_days = int(config.get("retention_days", 30))
+        if retention_days > 0:
+            retention = cleanup_directory(transcript_dir, retention_days)
+            if retention.removed:
+                logging.info(
+                    "Retenção removeu %s arquivos (%s bytes).",
+                    retention.removed,
+                    retention.bytes_removed,
+                )
         self.transcript_file = transcript_dir / f"{self.session_id}.jsonl"
         self.subtitle_exporter = (
             SubtitleExporter(transcript_dir, self.session_id)

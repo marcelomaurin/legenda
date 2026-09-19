@@ -429,3 +429,40 @@ Restart=on-failure
 
 O grupo `audio` é necessário para acesso aos dispositivos de captura em
 instalações Linux típicas.
+
+
+## Coleta web do corpus
+
+A coleta é separada do servidor STT principal:
+
+```text
+web/corpus.html
+      |
+      | getUserMedia
+      v
+captura PCM no navegador
+      |
+      v
+downsample para 16 kHz
+      |
+      v
+encode WAV PCM 16-bit
+      |
+      | HTTP POST
+      v
+corpus_collection_server.py
+      |
+      +-- valida category/id
+      +-- valida assinatura RIFF/WAVE
+      +-- limita tamanho
+      |
+      v
+corpus/audio/<category>/<id>.wav
+```
+
+Essa separação evita misturar a coleta controlada do dataset com o pipeline
+operacional de legendagem ao vivo.
+
+O endpoint só aceita IDs presentes nas referências textuais, reduzindo risco de
+criação de arquivos arbitrários. O nome de arquivo não vem diretamente do usuário:
+é derivado de `category` e `id` previamente validados.

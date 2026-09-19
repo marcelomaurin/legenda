@@ -302,11 +302,13 @@ python bin/generate_room_token.py principal \
 O comando imprime o token e uma URL semelhante a:
 
 ```text
-http://SERVIDOR:8080/?room=principal&token=TOKEN
+http://SERVIDOR:8080/?room=principal#token=TOKEN
 ```
 
 O token contém sala, papel e expiração, assinados com HMAC-SHA256. O servidor
-rejeita token adulterado, expirado ou emitido para outra sala.
+rejeita token adulterado, expirado ou emitido para outra sala. O token fica no
+fragmento `#token=`, evitando envio no request HTTP e reduzindo exposição em
+logs do servidor web.
 
 Papéis previstos:
 

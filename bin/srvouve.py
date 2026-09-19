@@ -77,6 +77,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "save_session_audio": True,
     "transcript_dir": "transcripts",
     "retention_days": 30,
+    "retention_extra_dirs": ["logs"],
 }
 
 
@@ -166,13 +167,20 @@ class CaptionServer:
         transcript_dir.mkdir(parents=True, exist_ok=True)
         retention_days = int(config.get("retention_days", 30))
         if retention_days > 0:
-            retention = cleanup_directory(transcript_dir, retention_days)
-            if retention.removed:
-                logging.info(
-                    "Retenção removeu %s arquivos (%s bytes).",
-                    retention.removed,
-                    retention.bytes_removed,
-                )
+            retention_dirs = [transcript_dir]
+            retention_dirs.extend(
+                Path(str(item))
+                for item in config.get("retention_extra_dirs", ["logs"])
+            )
+            for retention_dir in retention_dirs:
+                retention = cleanup_directory(retention_dir, retention_days)
+                if retention.removed:
+                    logging.info(
+                        "Retenção %s removeu %s arquivos (%s bytes).",
+                        retention_dir,
+                        retention.removed,
+                        retention.bytes_removed,
+                    )
         self.transcript_file = transcript_dir / f"{self.session_id}.jsonl"
         self.subtitle_exporter = (
             SubtitleExporter(transcript_dir, self.session_id)

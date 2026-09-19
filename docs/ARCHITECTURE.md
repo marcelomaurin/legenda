@@ -39,6 +39,8 @@ CaptionEvent
   +-- TCP JSONL --> Lazarus / somente final
   +-- WebSocket -> Web / partial + final
   +-- JSONL ----> arquivo / somente final
+  +-- SRT/VTT --> legendas sincronizadas
+  +-- WAV ------> áudio temporal da sessão
 ```
 
 ## Por que existem dois níveis de VAD
@@ -131,11 +133,21 @@ prioridade de enfileiramento porque representam a transcrição consolidada.
 O Lazarus continua no TCP 8097 e recebe apenas eventos finais. O navegador usa
 WebSocket 8098 e recebe partial/final.
 
+## Exportação e diarização
+
+Cada evento final é acrescentado também aos arquivos SRT e WebVTT. O áudio final
+dos segmentos é reconstruído em um WAV de sessão preservando os offsets de
+`start_ms`.
+
+A diarização é executada depois da sessão por `bin/diarize_session.py`. O
+pipeline `pyannote/speaker-diarization-community-1` trabalha sobre o WAV completo
+e o resultado exclusivo de diarização é reconciliado com cada legenda pelo maior
+tempo de sobreposição. Isso evita tentar identificar locutores a partir de frases
+isoladas.
+
 ## Próximas extensões
 
-1. exportação SRT e WebVTT;
-2. diarização;
-3. salas e autenticação;
+1. salas e autenticação;
 4. tradução simultânea;
 5. painel de telemetria;
 6. benchmark WER/latência;

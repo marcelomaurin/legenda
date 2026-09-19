@@ -18,6 +18,8 @@ from typing import Any
 from stt_engines import SpeechEngine, create_engine
 from vad_capture import AudioChunk, VADAudioCapture
 from session_export import SessionWaveRecorder, SubtitleExporter
+from room_auth import RoomTokenManager
+from translation import create_translator, normalize_language
 
 try:
     from websockets.sync.server import serve as websocket_serve
@@ -30,6 +32,16 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "port": 8097,
     "websocket_enabled": True,
     "websocket_port": 8098,
+    "active_room": "principal",
+    "room_auth_required": False,
+    "room_auth_secret": "",
+    "room_name": "Sala principal",
+    "allowed_languages": ["pt-BR", "en", "es"],
+    "translation_provider": "none",
+    "translation_endpoint": "",
+    "translation_api_key": "",
+    "translation_timeout_seconds": 8,
+    "translate_partials": False,
     "language": "pt-BR",
     "stt_engine": "faster-whisper",
     "whisper_model": "small",
@@ -97,7 +109,7 @@ class CaptionServer:
         self.clients: set[socket.socket] = set()
         self.clients_lock = threading.Lock()
 
-        self.websocket_clients: set[Any] = set()
+        self.websocket_clients: dict[Any, dict[str, str]] = {}
         self.websocket_clients_lock = threading.Lock()
 
         self.events: Queue[CaptionEvent] = Queue(maxsize=int(config["queue_size"]))
@@ -109,6 +121,16 @@ class CaptionServer:
         self.server_socket: socket.socket | None = None
 
         self.session_id = datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:8]
+        self.room_id = str(config.get("active_room", "principal")).strip() or "principal"
+        self.room_name = str(config.get("room_name", self.room_id))
+        self.room_auth_required = bool(config.get("room_auth_required", False))
+        secret = str(config.get("room_auth_secret", ""))
+        self.token_manager = RoomTokenManager(secret) if self.room_auth_required else None
+        self.allowed_languages = [
+            str(item) for item in config.get("allowed_languages", [config.get("language", "pt-BR")])
+        ]
+        self.translator = create_translator(config)
+        self.translate_partials = bool(config.get("translate_partials", False))
         self.sequence = 0
         self.sequence_lock = threading.Lock()
 
@@ -309,19 +331,96 @@ class CaptionServer:
     # ---------- WebSocket ----------
 
     def websocket_handler(self, connection: Any) -> None:
-        with self.websocket_clients_lock:
-            self.websocket_clients.add(connection)
-
-        logging.info("Cliente WebSocket conectado.")
+        client_info: dict[str, str] | None = None
         try:
-            for _message in connection:
+            raw = connection.recv()
+            request = json.loads(raw)
+
+            if request.get("type") != "auth":
+                connection.send(json.dumps({
+                    "type": "error",
+                    "code": "AUTH_REQUIRED",
+                    "message": "A primeira mensagem deve autenticar o cliente."
+                }, ensure_ascii=False))
+                return
+
+            requested_room = str(request.get("room", "")).strip()
+            if requested_room != self.room_id:
+                connection.send(json.dumps({
+                    "type": "error",
+                    "code": "ROOM_NOT_ACTIVE",
+                    "message": "Sala inexistente ou não ativa neste servidor."
+                }, ensure_ascii=False))
+                return
+
+            role = "viewer"
+            if self.room_auth_required:
+                token = str(request.get("token", ""))
+                try:
+                    claims = self.token_manager.verify(token, expected_room=self.room_id)
+                    role = claims.role
+                except ValueError as exc:
+                    connection.send(json.dumps({
+                        "type": "error",
+                        "code": "INVALID_TOKEN",
+                        "message": str(exc)
+                    }, ensure_ascii=False))
+                    return
+
+            language = str(request.get("language", self.config["language"]))
+            allowed_normalized = {normalize_language(item) for item in self.allowed_languages}
+            if normalize_language(language) not in allowed_normalized:
+                language = str(self.config["language"])
+
+            client_info = {
+                "room": self.room_id,
+                "role": role,
+                "language": language,
+            }
+
+            with self.websocket_clients_lock:
+                self.websocket_clients[connection] = client_info
+
+            connection.send(json.dumps({
+                "type": "welcome",
+                "room": self.room_id,
+                "room_name": self.room_name,
+                "session_id": self.session_id,
+                "role": role,
+                "language": language,
+                "source_language": self.config["language"],
+                "allowed_languages": self.allowed_languages,
+            }, ensure_ascii=False))
+
+            logging.info(
+                "WebSocket autenticado | sala=%s | idioma=%s | papel=%s",
+                self.room_id,
+                language,
+                role,
+            )
+
+            for raw_message in connection:
                 if self.stop_event.is_set():
                     break
+
+                try:
+                    message = json.loads(raw_message)
+                except Exception:
+                    continue
+
+                if message.get("type") == "set_language":
+                    requested_language = str(message.get("language", ""))
+                    if normalize_language(requested_language) in allowed_normalized:
+                        client_info["language"] = requested_language
+                        connection.send(json.dumps({
+                            "type": "language_changed",
+                            "language": requested_language
+                        }, ensure_ascii=False))
         except Exception as exc:
             logging.debug("WebSocket encerrado: %s", exc)
         finally:
             with self.websocket_clients_lock:
-                self.websocket_clients.discard(connection)
+                self.websocket_clients.pop(connection, None)
             logging.info("Cliente WebSocket desconectado.")
 
     def websocket_loop(self) -> None:
@@ -340,16 +439,57 @@ class CaptionServer:
             logging.error("Falha no servidor WebSocket: %s", exc)
 
     def broadcast_websocket(self, event: CaptionEvent) -> None:
-        payload = event.to_json()
         with self.websocket_clients_lock:
-            connections = list(self.websocket_clients)
+            clients = list(self.websocket_clients.items())
 
-        for connection in connections:
+        source_language = str(event.language or self.config["language"])
+
+        for connection, client in clients:
+            if client.get("room") != self.room_id:
+                continue
+
+            target_language = client.get("language", source_language)
+            target_normalized = normalize_language(target_language)
+            source_normalized = normalize_language(source_language)
+
+            if (
+                not event.final
+                and target_normalized != source_normalized
+                and not self.translate_partials
+            ):
+                continue
+
+            payload = asdict(event)
+            payload["room"] = self.room_id
+            payload["room_name"] = self.room_name
+            payload["source_language"] = source_language
+            payload["language"] = target_language
+            payload["translated"] = False
+
+            if target_normalized != source_normalized:
+                try:
+                    translated = self.translator.translate(
+                        event.text,
+                        source_language,
+                        target_language,
+                    )
+                    payload["original_text"] = event.text
+                    payload["text"] = translated
+                    payload["translated"] = translated != event.text
+                except Exception as exc:
+                    logging.warning(
+                        "Falha ao traduzir %s -> %s: %s",
+                        source_language,
+                        target_language,
+                        exc,
+                    )
+                    payload["translation_error"] = True
+
             try:
-                connection.send(payload)
+                connection.send(json.dumps(payload, ensure_ascii=False))
             except Exception:
                 with self.websocket_clients_lock:
-                    self.websocket_clients.discard(connection)
+                    self.websocket_clients.pop(connection, None)
 
     # ---------- persistência / distribuição ----------
 
@@ -398,7 +538,8 @@ class CaptionServer:
             threading.Thread(target=self.websocket_loop, daemon=True, name="websocket").start()
 
         logging.info(
-            "Legenda v2 | sessão %s | TCP %s:%s | STT %s",
+            "Legenda v2 | sala %s | sessão %s | TCP %s:%s | STT %s",
+            self.room_id,
             self.session_id,
             self.config["host"],
             self.config["port"],

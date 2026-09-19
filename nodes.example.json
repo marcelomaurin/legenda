@@ -1,0 +1,18 @@
+{
+  "fleet_token": "TROQUE-ESTE-TOKEN-DA-FROTA",
+  "timeout_seconds": 3,
+  "nodes": [
+    {
+      "id": "servidor-principal",
+      "name": "Servidor principal",
+      "url": "http://127.0.0.1:8070",
+      "token": "TOKEN-DO-ORQUESTRADOR-LOCAL"
+    },
+    {
+      "id": "auditorio-2",
+      "name": "No Auditorio 2",
+      "url": "http://192.168.1.50:8070",
+      "token": "TOKEN-DO-ORQUESTRADOR-REMOTO"
+    }
+  ]
+}

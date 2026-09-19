@@ -1,0 +1,33 @@
+{
+  "manifest": "corpus/manifest.jsonl",
+  "config": "config.json",
+  "output_dir": "benchmark_results",
+  "report": "benchmark_results/report.html",
+  "runs": [
+    {
+      "engine": "faster-whisper",
+      "model": "tiny",
+      "device": "cpu",
+      "compute_type": "int8"
+    },
+    {
+      "engine": "faster-whisper",
+      "model": "base",
+      "device": "cpu",
+      "compute_type": "int8"
+    },
+    {
+      "engine": "faster-whisper",
+      "model": "small",
+      "device": "cpu",
+      "compute_type": "int8"
+    },
+    {
+      "engine": "faster-whisper",
+      "model": "small",
+      "device": "cuda",
+      "compute_type": "float16",
+      "enabled": false
+    }
+  ]
+}

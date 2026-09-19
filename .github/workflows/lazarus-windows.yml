@@ -1,0 +1,62 @@
+name: lazarus-windows
+
+on:
+  push:
+    branches: ["modernizacao-v2"]
+    paths:
+      - "src/**"
+      - ".github/workflows/lazarus-windows.yml"
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar Lazarus
+        shell: pwsh
+        run: |
+          choco install lazarus --version=4.0.0 -y --no-progress
+          Import-Module "$env:ChocolateyInstall\helpers\chocolateyProfile.psm1"
+          refreshenv
+          $laz = Get-Command lazbuild -ErrorAction SilentlyContinue
+          if (-not $laz) {
+            $candidates = Get-ChildItem "C:\lazarus","C:\Program Files\Lazarus","C:\Program Files (x86)\Lazarus" -Filter lazbuild.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            if (-not $candidates) { throw "lazbuild.exe não encontrado" }
+            $dir = Split-Path $candidates.FullName -Parent
+            $dir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+            $env:PATH = "$dir;$env:PATH"
+          }
+          lazbuild --version
+
+      - name: Obter lNet
+        shell: pwsh
+        run: git clone --depth 1 https://github.com/almindor/lnet.git .ci/lnet
+
+      - name: Compilar pacotes lNet
+        shell: pwsh
+        run: |
+          lazbuild .ci/lnet/lazaruspackage/lnetbase.lpk
+          lazbuild .ci/lnet/lazaruspackage/lnetvisual.lpk
+
+      - name: Compilar Legenda
+        shell: pwsh
+        run: lazbuild src/legenda.lpi --build-mode=Default
+
+      - name: Verificar executável
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "src/legenda.exe")) {
+            throw "src/legenda.exe não foi gerado"
+          }
+          Get-Item "src/legenda.exe" | Format-List Name,Length,LastWriteTime
+
+      - name: Publicar binário Windows
+        uses: actions/upload-artifact@v4
+        with:
+          name: legenda-lazarus-windows
+          path: src/legenda.exe
+          if-no-files-found: error

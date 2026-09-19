@@ -4,7 +4,7 @@ object frmToolsOuvir: TfrmToolsOuvir
   Top = 45
   Width = 529
   ActiveControl = edIP
-  Caption = 'Serviço de Reconhecimento de Voz'
+  Caption = 'Legenda - conexão'
   ClientHeight = 143
   ClientWidth = 529
   LCLVersion = '3.6.0.0'
@@ -36,8 +36,8 @@ object frmToolsOuvir: TfrmToolsOuvir
     Left = 240
     Height = 15
     Top = 8
-    Width = 25
-    Caption = 'Port:'
+    Width = 31
+    Caption = 'Porta:'
     ParentColor = False
   end
   object edPort: TEdit
@@ -52,17 +52,17 @@ object frmToolsOuvir: TfrmToolsOuvir
     Left = 264
     Height = 25
     Top = 40
-    Width = 75
-    Caption = 'Disconect'
+    Width = 88
+    Caption = 'Desconectar'
     TabOrder = 2
     OnClick = btDisconectClick
   end
   object btConect: TButton
-    Left = 176
+    Left = 160
     Height = 25
     Top = 40
-    Width = 75
-    Caption = 'Conect'
+    Width = 88
+    Caption = 'Conectar'
     TabOrder = 3
     OnClick = btConectClick
   end
@@ -70,8 +70,8 @@ object frmToolsOuvir: TfrmToolsOuvir
     Left = 6
     Height = 15
     Top = 74
-    Width = 66
-    Caption = 'Ultima frase:'
+    Width = 72
+    Caption = 'Última frase:'
     ParentColor = False
   end
   object edTexto: TEdit
@@ -81,15 +81,16 @@ object frmToolsOuvir: TfrmToolsOuvir
     Width = 520
     TabOrder = 4
   end
-  object AdvLed1: TAdvLed
+  object ShapeStatus: TShape
     Left = 38
     Height = 24
     Top = 34
     Width = 24
+    Brush.Color = clRed
+    Shape = stCircle
   end
   object LTCPComponent1: TLTCPComponent
-    Host = '192.168.0.6'
-    Port = 7091
+    Port = 8097
     OnReceive = LTCPComponent1Receive
     OnDisconnect = LTCPComponent1Disconnect
     OnConnect = LTCPComponent1Connect
@@ -98,15 +99,5 @@ object frmToolsOuvir: TfrmToolsOuvir
     ReuseAddress = True
     Left = 368
     Top = 8
-  end
-  object LTCPComponent2: TLTCPComponent
-    Port = 0
-    OnReceive = LTCPComponent2Receive
-    OnDisconnect = LTCPComponent2Disconnect
-    OnConnect = LTCPComponent2Connect
-    Timeout = 0
-    ReuseAddress = False
-    Left = 368
-    Top = 64
   end
 end

@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Legenda ao vivo</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --font-size: clamp(2rem, 6vw, 5.5rem);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: Canvas;
+      color: CanvasText;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+    }
+
+    header, footer {
+      padding: .75rem 1rem;
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: .5rem;
+      font-weight: 650;
+    }
+
+    .dot {
+      width: .8rem;
+      height: .8rem;
+      border-radius: 50%;
+      background: #777;
+    }
+
+    .online .dot { background: #17a34a; }
+    .offline .dot { background: #c52b2b; }
+
+    main {
+      display: grid;
+      place-items: end center;
+      padding: 3vw;
+    }
+
+    #caption {
+      width: min(96vw, 1500px);
+      padding: .4em .6em;
+      border-radius: .35em;
+      background: color-mix(in srgb, Canvas 90%, transparent);
+      font-size: var(--font-size);
+      font-weight: 700;
+      line-height: 1.18;
+      text-align: center;
+      overflow-wrap: anywhere;
+      min-height: 2.4em;
+      display: grid;
+      place-items: center;
+      transition: opacity .12s ease;
+    }
+
+    #caption.partial {
+      opacity: .72;
+      font-style: italic;
+    }
+
+    #caption.final {
+      opacity: 1;
+      font-style: normal;
+    }
+
+    .controls {
+      display: flex;
+      gap: .5rem;
+      flex-wrap: wrap;
+    }
+
+    button, select {
+      font: inherit;
+      padding: .55rem .75rem;
+    }
+
+    button { cursor: pointer; }
+
+    #authError {
+      display: none;
+      width: min(96vw, 900px);
+      margin: 0 auto;
+      padding: .75rem 1rem;
+      border: 1px solid currentColor;
+      border-radius: .5rem;
+      text-align: center;
+    }
+
+    #metrics {
+      opacity: .78;
+      font-size: .9rem;
+    }
+
+    @media (prefers-contrast: more) {
+      #caption { outline: .15em solid currentColor; }
+      #caption.partial { opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div id="status" class="status offline">
+      <span class="dot" aria-hidden="true"></span>
+      <span id="statusText">Desconectado</span>
+    </div>
+
+    <div class="controls" aria-label="Controles de legenda">
+      <label>
+        Idioma
+        <select id="language" aria-label="Idioma da legenda"></select>
+      </label>
+      <button id="smaller" type="button" aria-label="Diminuir fonte">A−</button>
+      <button id="larger" type="button" aria-label="Aumentar fonte">A+</button>
+      <button id="fullscreen" type="button">Tela cheia</button>
+    </div>
+  </header>
+
+  <main aria-live="polite" aria-atomic="true">
+    <div>
+      <div id="authError" role="alert"></div>
+      <div id="caption" class="final">Aguardando autenticação…</div>
+    </div>
+  </main>
+
+  <footer>
+    <span id="room">Sala: —</span>
+    <span id="session">Sessão: —</span>
+    <span id="metrics">—</span>
+    <span id="clock">—</span>
+  </footer>
+
+  <script>
+    const caption = document.querySelector("#caption");
+    const roomLabel = document.querySelector("#room");
+    const languageSelect = document.querySelector("#language");
+    const authError = document.querySelector("#authError");
+    const status = document.querySelector("#status");
+    const statusText = document.querySelector("#statusText");
+    const session = document.querySelector("#session");
+    const clock = document.querySelector("#clock");
+    const metrics = document.querySelector("#metrics");
+
+    let fontScale = 1;
+    let retryTimer = null;
+    let lastSequence = 0;
+    let reconnectEnabled = true;
+
+    function websocketUrl() {
+      const params = new URLSearchParams(location.search);
+      const host = params.get("host") || location.hostname || "127.0.0.1";
+      const port = params.get("port") || "8098";
+      const protocol = location.protocol === "https:" ? "wss" : "ws";
+      return `${protocol}://${host}:${port}`;
+    }
+
+    function setConnectionState(connected, text = null) {
+      status.className = "status " + (connected ? "online" : "offline");
+      statusText.textContent = text || (connected ? "Ao vivo" : "Desconectado");
+    }
+
+    function connectionParams() {
+      const params = new URLSearchParams(location.search);
+      const hashParams = new URLSearchParams(location.hash.replace(/^#/, ""));
+      return {
+        room: params.get("room") || "principal",
+        token: hashParams.get("token") || params.get("token") || "",
+        language: params.get("lang") || "pt-BR"
+      };
+    }
+
+    function showError(message) {
+      authError.textContent = message;
+      authError.style.display = "block";
+      caption.textContent = "Não foi possível entrar na sala.";
+    }
+
+    function configureLanguages(languages, selected) {
+      languageSelect.replaceChildren();
+      for (const language of languages || []) {
+        const option = document.createElement("option");
+        option.value = language;
+        option.textContent = language;
+        option.selected = language === selected;
+        languageSelect.appendChild(option);
+      }
+    }
+
+    function renderCaption(data) {
+      if (!["partial", "caption"].includes(data.type)) return;
+      if (Number(data.sequence || 0) < lastSequence) return;
+
+      lastSequence = Number(data.sequence || lastSequence);
+      caption.textContent = data.text || "";
+      caption.className = data.final ? "final" : "partial";
+
+      session.textContent = "Sessão: " + (data.session_id || "—");
+      clock.textContent = data.timestamp
+        ? new Date(data.timestamp).toLocaleTimeString()
+        : "—";
+
+      const mode = data.final ? "final" : "parcial";
+      const latency = Number.isFinite(Number(data.latency_ms))
+        ? `${data.latency_ms} ms`
+        : "—";
+      const engine = data.engine || "STT";
+      metrics.textContent = `${engine} · ${mode} · ${latency}`;
+    }
+
+    let activeSocket = null;
+
+    function connect() {
+      clearTimeout(retryTimer);
+      const params = connectionParams();
+      const ws = new WebSocket(websocketUrl());
+      activeSocket = ws;
+      setConnectionState(false, "Conectando…");
+      authError.style.display = "none";
+
+      ws.addEventListener("open", () => {
+        setConnectionState(false, "Autenticando…");
+        ws.send(JSON.stringify({
+          type: "auth",
+          room: params.room,
+          token: params.token,
+          language: params.language
+        }));
+      });
+
+      ws.addEventListener("message", event => {
+        try {
+          const data = JSON.parse(event.data);
+
+          if (data.type === "error") {
+            reconnectEnabled = false;
+            showError(data.message || "Acesso negado.");
+            setConnectionState(false, "Acesso negado");
+            ws.close();
+            return;
+          }
+
+          if (data.type === "welcome") {
+            roomLabel.textContent = "Sala: " + (data.room_name || data.room || "—");
+            session.textContent = "Sessão: " + (data.session_id || "—");
+            configureLanguages(data.allowed_languages, data.language);
+            caption.textContent = "Aguardando legenda…";
+            setConnectionState(true);
+            return;
+          }
+
+          if (data.type === "language_changed") {
+            languageSelect.value = data.language;
+            return;
+          }
+
+          renderCaption(data);
+        } catch (error) {
+          console.error("Evento inválido:", error);
+        }
+      });
+
+      ws.addEventListener("close", () => {
+        if (activeSocket === ws) {
+          setConnectionState(false);
+          if (reconnectEnabled) {
+            retryTimer = setTimeout(connect, 2000);
+          }
+        }
+      });
+
+      ws.addEventListener("error", () => ws.close());
+    }
+
+    languageSelect.addEventListener("change", () => {
+      if (activeSocket && activeSocket.readyState === WebSocket.OPEN) {
+        activeSocket.send(JSON.stringify({
+          type: "set_language",
+          language: languageSelect.value
+        }));
+      }
+    });
+
+    document.querySelector("#larger").addEventListener("click", () => {
+      fontScale = Math.min(1.8, fontScale + .1);
+      caption.style.fontSize = `calc(var(--font-size) * ${fontScale})`;
+    });
+
+    document.querySelector("#smaller").addEventListener("click", () => {
+      fontScale = Math.max(.6, fontScale - .1);
+      caption.style.fontSize = `calc(var(--font-size) * ${fontScale})`;
+    });
+
+    document.querySelector("#fullscreen").addEventListener("click", async () => {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+      } else {
+        await document.exitFullscreen();
+      }
+    });
+
+    connect();
+  </script>
+</body>
+</html>

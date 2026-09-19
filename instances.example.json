@@ -1,0 +1,35 @@
+{
+  "base_config": "config.json",
+  "runtime_dir": ".runtime/instances",
+  "instances": [
+    {
+      "name": "conselho",
+      "overrides": {
+        "active_room": "conselho",
+        "room_name": "Conselho de Saúde",
+        "port": 8097,
+        "websocket_port": 8098,
+        "input_device_index": 1,
+        "transcript_dir": "transcripts/conselho"
+      }
+    },
+    {
+      "name": "auditorio",
+      "overrides": {
+        "active_room": "auditorio",
+        "room_name": "Auditório",
+        "port": 8197,
+        "websocket_port": 8198,
+        "input_device_index": 2,
+        "transcript_dir": "transcripts/auditorio"
+      }
+    }
+  ],
+  "control_host": "127.0.0.1",
+  "control_port": 8070,
+  "control_token": "TROQUE-ESTE-TOKEN-DE-CONTROLE",
+  "runtime_persist_keys": [
+    "input_device_index"
+  ],
+  "reset_runtime_settings": false
+}

@@ -1,0 +1,75 @@
+name: windows-release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Versao do pacote (ex.: 2.0.0-rc1)"
+        required: false
+        default: "dev"
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows-portable:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Testes leves
+        shell: pwsh
+        run: python -m unittest discover -s tests -p "test_*.py"
+
+      - name: Validar prontidão da release
+        shell: pwsh
+        run: python bin/release_readiness.py
+
+      - name: Determinar versao
+        id: version
+        shell: pwsh
+        run: |
+          if ("${{ github.ref_type }}" -eq "tag") {
+            $v = "${{ github.ref_name }}".TrimStart("v")
+          } elseif ("${{ inputs.version }}" -ne "") {
+            $v = "${{ inputs.version }}"
+          } else {
+            $v = "dev-${{ github.sha }}".Substring(0, 12)
+          }
+          "value=$v" >> $env:GITHUB_OUTPUT
+
+      - name: Montar pacote portavel
+        shell: pwsh
+        run: ./deploy/build_windows_portable.ps1 -Version "${{ steps.version.outputs.value }}"
+
+      - name: Validar runtime empacotado
+        shell: pwsh
+        run: |
+          $pkg = "dist/Legenda-${{ steps.version.outputs.value }}"
+          & "$pkg/python/python.exe" -c "import numpy, websockets, psutil; print('runtime-ok')"
+
+      - name: Upload do artefato
+        uses: actions/upload-artifact@v4
+        with:
+          name: Legenda-${{ steps.version.outputs.value }}-win64
+          path: |
+            dist/Legenda-${{ steps.version.outputs.value }}-win64.zip
+            dist/Legenda-${{ steps.version.outputs.value }}-win64.zip.sha256
+          if-no-files-found: error
+
+      - name: Publicar GitHub Release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/Legenda-${{ steps.version.outputs.value }}-win64.zip
+            dist/Legenda-${{ steps.version.outputs.value }}-win64.zip.sha256
+          generate_release_notes: true

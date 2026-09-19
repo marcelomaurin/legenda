@@ -1,0 +1,49 @@
+# Legenda v2 - exemplo de reverse proxy com TLS automático.
+# Troque legenda.exemplo.gov.br pelo hostname real.
+
+legenda.exemplo.gov.br {
+    encode zstd gzip
+
+    # Interface web estática.
+    root * /opt/legenda/web
+    file_server
+
+    # WebSocket principal. Caddy preserva Upgrade automaticamente.
+    handle_path /ws/* {
+        reverse_proxy 127.0.0.1:8098
+    }
+
+    # Painel/control plane do orquestrador.
+    handle_path /orchestrator-api/* {
+        reverse_proxy 127.0.0.1:8070
+    }
+
+    # Fleet multi-nó.
+    handle_path /fleet-api/* {
+        reverse_proxy 127.0.0.1:8050
+    }
+
+    # Coleta do corpus.
+    handle_path /corpus-api/* {
+        reverse_proxy 127.0.0.1:8060
+    }
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        -Server
+    }
+
+    log {
+        output file /var/log/caddy/legenda-access.log
+        format json
+    }
+}
+
+# IMPORTANTE:
+# - não faça proxy público da porta TCP 8097;
+# - mantenha tokens nos fragmentos (#token=...), nunca em query string;
+# - serviços administrativos continuam exigindo seus próprios Bearer tokens;
+# - use firewall/VPN para o TCP legado.

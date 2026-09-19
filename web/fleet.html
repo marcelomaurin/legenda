@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Legenda v2 — Fleet</title>
+  <style>
+    :root { color-scheme: light dark; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family:system-ui,-apple-system,"Segoe UI",sans-serif; background:Canvas; color:CanvasText; }
+    header {
+      padding:1rem 1.25rem;
+      border-bottom:1px solid color-mix(in srgb,CanvasText 18%,transparent);
+      display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap;
+    }
+    main { width:min(1500px,96vw); margin:1.3rem auto 3rem; }
+    .toolbar { display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; }
+    input,button { font:inherit; padding:.5rem .7rem; }
+    button { cursor:pointer; }
+    .node {
+      border:1px solid color-mix(in srgb,CanvasText 18%,transparent);
+      border-radius:.85rem; padding:1rem; margin-bottom:1rem;
+    }
+    .node-head { display:flex; justify-content:space-between; gap:1rem; align-items:center; flex-wrap:wrap; }
+    .badge { border:1px solid currentColor; border-radius:999px; padding:.2rem .55rem; font-size:.85rem; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:.8rem; margin-top:.8rem; }
+    .instance { border:1px solid color-mix(in srgb,CanvasText 12%,transparent); border-radius:.65rem; padding:.8rem; }
+    .rows { display:grid; grid-template-columns:minmax(100px,1fr) 2fr; gap:.3rem .7rem; }
+    .actions { display:flex; gap:.4rem; flex-wrap:wrap; margin-top:.7rem; }
+    .muted { opacity:.7; }
+    #error { display:none; margin-bottom:1rem; padding:.8rem; border:1px solid currentColor; border-radius:.6rem; }
+  </style>
+</head>
+<body>
+<header>
+  <div>
+    <strong>Legenda v2 — Gestão multi-nó</strong>
+    <div class="muted">Visão consolidada da frota</div>
+  </div>
+  <div class="toolbar">
+    <label>Fleet API <input id="apiUrl" value="http://127.0.0.1:8050"></label>
+    <button id="refresh" type="button">Atualizar</button>
+    <span id="status">Desconectado</span>
+  </div>
+</header>
+<main>
+  <div id="error" role="alert"></div>
+  <section id="nodes"></section>
+</main>
+<script>
+  const $ = s => document.querySelector(s);
+  const query = new URLSearchParams(location.search);
+  const hash = new URLSearchParams(location.hash.replace(/^#/, ""));
+  const token = hash.get("token") || "";
+  if (query.get("api")) $("#apiUrl").value = query.get("api");
+
+  function base() { return $("#apiUrl").value.replace(/\/$/, ""); }
+  function headers() {
+    const h = {"Content-Type":"application/json"};
+    if (token) h.Authorization = "Bearer " + token;
+    return h;
+  }
+  function showError(message) {
+    $("#error").textContent = message;
+    $("#error").style.display = "block";
+  }
+  function clearError() { $("#error").style.display = "none"; }
+  function v(value) { return value == null || value === "" ? "—" : String(value); }
+
+  async function api(path, options={}) {
+    const r = await fetch(base()+path, {...options, headers:{...headers(), ...(options.headers||{})}, cache:"no-store"});
+    if (!r.ok) {
+      let message = r.statusText;
+      try { const d = await r.json(); message = d.message || d.error || message; } catch {}
+      throw new Error(message);
+    }
+    return r.json();
+  }
+
+  async function control(nodeId, action, instance) {
+    try {
+      clearError();
+      $("#status").textContent = action + "…";
+      await api(`/api/node/${encodeURIComponent(nodeId)}/${action}/${encodeURIComponent(instance)}`, {method:"POST"});
+      await refresh();
+    } catch (e) {
+      showError(e.message);
+      $("#status").textContent = "Erro";
+    }
+  }
+
+  function render(data) {
+    const root = $("#nodes");
+    root.replaceChildren();
+
+    for (const node of data.nodes || []) {
+      const section = document.createElement("section");
+      section.className = "node";
+
+      const head = document.createElement("div");
+      head.className = "node-head";
+      head.innerHTML = `
+        <div>
+          <h2 style="margin:.1rem 0">${node.name}</h2>
+          <div class="muted">${node.id} · ${node.url}</div>
+        </div>
+        <div>
+          <span class="badge">${node.online ? "online" : "offline"}</span>
+          <span class="muted">${node.latency_ms == null ? "" : node.latency_ms + " ms"}</span>
+        </div>
+      `;
+      section.appendChild(head);
+
+      if (!node.online) {
+        const p = document.createElement("p");
+        p.textContent = node.error || "Nó indisponível";
+        section.appendChild(p);
+      } else {
+        const grid = document.createElement("div");
+        grid.className = "grid";
+
+        for (const item of node.instances || []) {
+          const card = document.createElement("article");
+          card.className = "instance";
+          card.innerHTML = `
+            <strong>${item.room_name || item.name}</strong>
+            <div class="muted">${item.name}</div>
+            <div class="rows">
+              <div>Estado</div><div>${item.running ? "ativa" : (item.desired_running ? "reiniciando/falha" : "parada")}</div>
+              <div>PID</div><div>${v(item.pid)}</div>
+              <div>TCP</div><div>${v(item.tcp_port)}</div>
+              <div>WS</div><div>${v(item.websocket_port)}</div>
+              <div>Microfone</div><div>${v(item.input_device_index)}</div>
+              <div>Engine</div><div>${v(item.engine)}</div>
+              <div>Modelo</div><div>${v(item.model)}</div>
+            </div>
+          `;
+
+          const actions = document.createElement("div");
+          actions.className = "actions";
+          for (const [action,label] of [["start","Iniciar"],["stop","Parar"],["restart","Reiniciar"]]) {
+            const b = document.createElement("button");
+            b.textContent = label;
+            b.disabled = action === "start" ? item.running : !item.running;
+            b.onclick = () => control(node.id, action, item.name);
+            actions.appendChild(b);
+          }
+          card.appendChild(actions);
+          grid.appendChild(card);
+        }
+        section.appendChild(grid);
+      }
+
+      root.appendChild(section);
+    }
+  }
+
+  async function refresh() {
+    try {
+      clearError();
+      $("#status").textContent = "Atualizando…";
+      const data = await api("/api/fleet");
+      render(data);
+      $("#status").textContent = "Online";
+    } catch (e) {
+      showError(e.message);
+      $("#status").textContent = "Erro";
+    }
+  }
+
+  $("#refresh").addEventListener("click", refresh);
+  $("#apiUrl").addEventListener("change", refresh);
+  refresh();
+  setInterval(refresh, 5000);
+</script>
+</body>
+</html>

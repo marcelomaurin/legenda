@@ -1,0 +1,45 @@
+name: lazarus-build
+
+on:
+  push:
+    branches: ["modernizacao-v2"]
+    paths:
+      - "src/**"
+      - ".github/workflows/lazarus-build.yml"
+  workflow_dispatch:
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar Lazarus e dependências
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lazarus git
+
+      - name: Obter lNet
+        run: |
+          git clone --depth 1 https://github.com/almindor/lnet.git .ci/lnet
+
+      - name: Compilar pacotes lNet
+        run: |
+          lazbuild .ci/lnet/lazaruspackage/lnetbase.lpk
+          lazbuild .ci/lnet/lazaruspackage/lnetvisual.lpk
+
+      - name: Compilar Legenda
+        run: lazbuild src/legenda.lpi --build-mode=Default
+
+      - name: Verificar executável
+        run: |
+          test -f src/legenda
+          file src/legenda
+
+      - name: Publicar binário Linux
+        uses: actions/upload-artifact@v4
+        with:
+          name: legenda-lazarus-linux
+          path: src/legenda
+          if-no-files-found: error

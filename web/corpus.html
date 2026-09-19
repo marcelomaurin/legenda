@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Legenda v2 — Coleta do Corpus</title>
+  <style>
+    :root { color-scheme: light dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: Canvas;
+      color: CanvasText;
+    }
+    header {
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid color-mix(in srgb, CanvasText 18%, transparent);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    main {
+      width: min(1100px, 94vw);
+      margin: 1.5rem auto 3rem;
+    }
+    .panel {
+      border: 1px solid color-mix(in srgb, CanvasText 18%, transparent);
+      border-radius: .9rem;
+      padding: 1.2rem;
+      margin-bottom: 1rem;
+    }
+    .phrase {
+      font-size: clamp(1.7rem, 4vw, 3rem);
+      font-weight: 750;
+      line-height: 1.25;
+      margin: 1rem 0;
+    }
+    .toolbar, .actions {
+      display: flex;
+      gap: .6rem;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    select, input, button {
+      font: inherit;
+      padding: .55rem .75rem;
+    }
+    button { cursor: pointer; }
+    button.recording { outline: 3px solid currentColor; }
+    .muted { opacity: .7; }
+    .progress {
+      height: .75rem;
+      background: color-mix(in srgb, CanvasText 12%, transparent);
+      border-radius: 999px;
+      overflow: hidden;
+      margin-top: .6rem;
+    }
+    .progress > span {
+      display: block;
+      height: 100%;
+      width: 0;
+      background: currentColor;
+      opacity: .55;
+    }
+    .ok { font-weight: 700; }
+    #error {
+      display: none;
+      padding: .8rem 1rem;
+      margin-bottom: 1rem;
+      border: 1px solid currentColor;
+      border-radius: .6rem;
+    }
+    audio { width: 100%; margin-top: .8rem; }
+  </style>
+</head>
+<body>
+<header>
+  <div>
+    <strong>Legenda v2 — Coleta assistida do corpus</strong>
+    <div class="muted" id="status">Inicializando…</div>
+  </div>
+  <div class="toolbar">
+    <label>API
+      <input id="apiUrl" value="http://127.0.0.1:8060">
+    </label>
+    <button id="reload" type="button">Recarregar</button>
+  </div>
+</header>
+
+<main>
+  <div id="error" role="alert"></div>
+
+  <section class="panel">
+    <div class="toolbar">
+      <label>Categoria
+        <select id="category"></select>
+      </label>
+      <label>Amostra
+        <select id="sample"></select>
+      </label>
+      <label>Locutor
+        <input id="speaker" readonly>
+      </label>
+    </div>
+
+    <div class="phrase" id="phrase">—</div>
+    <div class="muted" id="notes"></div>
+
+    <div class="progress"><span id="progressBar"></span></div>
+    <div class="muted" id="progressText">0 / 0</div>
+  </section>
+
+  <section class="panel">
+    <div class="actions">
+      <button id="record" type="button">● Gravar</button>
+      <button id="stop" type="button" disabled>■ Parar</button>
+      <button id="upload" type="button" disabled>Salvar WAV</button>
+      <button id="prev" type="button">← Anterior</button>
+      <button id="next" type="button">Próxima →</button>
+    </div>
+
+    <audio id="preview" controls></audio>
+    <div id="sampleState" class="muted">Nenhuma gravação local.</div>
+  </section>
+</main>
+
+<script>
+  const $ = s => document.querySelector(s);
+  const query = new URLSearchParams(location.search);
+  const hash = new URLSearchParams(location.hash.replace(/^#/, ""));
+  const token = hash.get("token") || "";
+
+  if (query.get("api")) $("#apiUrl").value = query.get("api");
+
+  let items = [];
+  let current = null;
+  let audioContext = null;
+  let mediaStream = null;
+  let sourceNode = null;
+  let processor = null;
+  let recordedChunks = [];
+  let wavBlob = null;
+  let recording = false;
+
+  function apiBase() {
+    return $("#apiUrl").value.replace(/\/$/, "");
+  }
+
+  function headers(extra = {}) {
+    const h = {...extra};
+    if (token) h.Authorization = "Bearer " + token;
+    return h;
+  }
+
+  function showError(message) {
+    $("#error").textContent = message;
+    $("#error").style.display = "block";
+  }
+
+  function clearError() {
+    $("#error").style.display = "none";
+  }
+
+  async function api(path, options = {}) {
+    const response = await fetch(apiBase() + path, {
+      ...options,
+      headers: headers(options.headers || {}),
+      cache: "no-store"
+    });
+    if (!response.ok) {
+      let message = response.statusText;
+      try {
+        const data = await response.json();
+        message = data.message || data.error || message;
+      } catch {}
+      throw new Error(message);
+    }
+    return response.json();
+  }
+
+  function categories() {
+    return [...new Set(items.map(x => x.category))].sort();
+  }
+
+  function categoryItems() {
+    return items.filter(x => x.category === $("#category").value);
+  }
+
+  function updateProgress() {
+    const list = categoryItems();
+    const done = list.filter(x => x.recorded).length;
+    const total = list.length;
+    $("#progressText").textContent = `${done} / ${total} gravadas nesta categoria`;
+    $("#progressBar").style.width = total ? `${done / total * 100}%` : "0%";
+  }
+
+  function resetLocalRecording() {
+    wavBlob = null;
+    $("#preview").removeAttribute("src");
+    $("#preview").load();
+    $("#upload").disabled = true;
+    $("#sampleState").textContent = current?.recorded
+      ? "Já existe WAV salvo para esta amostra."
+      : "Nenhuma gravação local.";
+  }
+
+  function renderCurrent() {
+    const list = categoryItems();
+    const id = $("#sample").value;
+    current = list.find(x => x.id === id) || list[0] || null;
+    if (!current) return;
+
+    $("#sample").value = current.id;
+    $("#phrase").textContent = current.reference;
+    $("#speaker").value = current.speaker || "";
+    $("#notes").textContent = current.notes || "";
+    resetLocalRecording();
+    updateProgress();
+  }
+
+  function populateSamples(preferredId = null) {
+    const select = $("#sample");
+    select.replaceChildren();
+    for (const item of categoryItems()) {
+      const option = document.createElement("option");
+      option.value = item.id;
+      option.textContent = `${item.id}${item.recorded ? " ✓" : ""}`;
+      if (preferredId === item.id) option.selected = true;
+      select.appendChild(option);
+    }
+    renderCurrent();
+  }
+
+  function populateCategories() {
+    const select = $("#category");
+    const previous = select.value;
+    select.replaceChildren();
+    for (const category of categories()) {
+      const option = document.createElement("option");
+      option.value = category;
+      option.textContent = category;
+      if (category === previous) option.selected = true;
+      select.appendChild(option);
+    }
+    populateSamples();
+  }
+
+  async function loadReferences() {
+    try {
+      clearError();
+      $("#status").textContent = "Carregando referências…";
+      const data = await api("/api/references");
+      items = data.items || [];
+      populateCategories();
+      $("#status").textContent = `${items.length} referências carregadas`;
+    } catch (error) {
+      showError(error.message);
+      $("#status").textContent = "Falha ao carregar";
+    }
+  }
+
+  function mergeBuffers(chunks) {
+    const length = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+    const merged = new Float32Array(length);
+    let offset = 0;
+    for (const chunk of chunks) {
+      merged.set(chunk, offset);
+      offset += chunk.length;
+    }
+    return merged;
+  }
+
+  function downsample(buffer, inputRate, outputRate) {
+    if (inputRate === outputRate) return buffer;
+    if (outputRate > inputRate) throw new Error("Upsampling não suportado.");
+
+    const ratio = inputRate / outputRate;
+    const length = Math.round(buffer.length / ratio);
+    const result = new Float32Array(length);
+    let out = 0;
+    let inOffset = 0;
+
+    while (out < length) {
+      const nextOffset = Math.round((out + 1) * ratio);
+      let total = 0;
+      let count = 0;
+      for (let i = inOffset; i < nextOffset && i < buffer.length; i++) {
+        total += buffer[i];
+        count++;
+      }
+      result[out] = count ? total / count : 0;
+      out++;
+      inOffset = nextOffset;
+    }
+    return result;
+  }
+
+  function encodeWav(samples, sampleRate = 16000) {
+    const buffer = new ArrayBuffer(44 + samples.length * 2);
+    const view = new DataView(buffer);
+
+    function writeString(offset, text) {
+      for (let i = 0; i < text.length; i++) {
+        view.setUint8(offset + i, text.charCodeAt(i));
+      }
+    }
+
+    writeString(0, "RIFF");
+    view.setUint32(4, 36 + samples.length * 2, true);
+    writeString(8, "WAVE");
+    writeString(12, "fmt ");
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * 2, true);
+    view.setUint16(32, 2, true);
+    view.setUint16(34, 16, true);
+    writeString(36, "data");
+    view.setUint32(40, samples.length * 2, true);
+
+    let offset = 44;
+    for (let i = 0; i < samples.length; i++, offset += 2) {
+      const sample = Math.max(-1, Math.min(1, samples[i]));
+      view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+    }
+    return new Blob([view], {type: "audio/wav"});
+  }
+
+  async function startRecording() {
+    clearError();
+    if (!current) return;
+
+    mediaStream = await navigator.mediaDevices.getUserMedia({
+      audio: {channelCount: 1, echoCancellation: false, noiseSuppression: false, autoGainControl: false}
+    });
+
+    audioContext = new AudioContext();
+    sourceNode = audioContext.createMediaStreamSource(mediaStream);
+    processor = audioContext.createScriptProcessor(4096, 1, 1);
+    recordedChunks = [];
+
+    processor.onaudioprocess = event => {
+      if (!recording) return;
+      const input = event.inputBuffer.getChannelData(0);
+      recordedChunks.push(new Float32Array(input));
+    };
+
+    sourceNode.connect(processor);
+    processor.connect(audioContext.destination);
+    recording = true;
+
+    $("#record").disabled = true;
+    $("#record").classList.add("recording");
+    $("#stop").disabled = false;
+    $("#upload").disabled = true;
+    $("#sampleState").textContent = "Gravando…";
+  }
+
+  async function stopRecording() {
+    if (!recording) return;
+    recording = false;
+
+    processor?.disconnect();
+    sourceNode?.disconnect();
+    mediaStream?.getTracks().forEach(track => track.stop());
+
+    const inputRate = audioContext?.sampleRate || 48000;
+    const merged = mergeBuffers(recordedChunks);
+    const downsampled = downsample(merged, inputRate, 16000);
+    wavBlob = encodeWav(downsampled, 16000);
+
+    await audioContext?.close();
+    audioContext = null;
+
+    $("#preview").src = URL.createObjectURL(wavBlob);
+    $("#record").disabled = false;
+    $("#record").classList.remove("recording");
+    $("#stop").disabled = true;
+    $("#upload").disabled = false;
+    $("#sampleState").textContent = `WAV local pronto · ${Math.round(wavBlob.size / 1024)} KB`;
+  }
+
+  async function uploadRecording() {
+    if (!wavBlob || !current) return;
+    try {
+      clearError();
+      $("#upload").disabled = true;
+      $("#sampleState").textContent = "Enviando…";
+
+      await api(
+        `/api/audio/${encodeURIComponent(current.category)}/${encodeURIComponent(current.id)}`,
+        {
+          method: "POST",
+          headers: {"Content-Type": "audio/wav"},
+          body: wavBlob
+        }
+      );
+
+      current.recorded = true;
+      $("#sampleState").textContent = "WAV salvo com sucesso.";
+      await loadReferences();
+
+      const list = categoryItems();
+      const idx = list.findIndex(x => x.id === current.id);
+      const next = list.slice(idx + 1).find(x => !x.recorded);
+      if (next) {
+        $("#sample").value = next.id;
+        renderCurrent();
+      }
+    } catch (error) {
+      showError(error.message);
+      $("#sampleState").textContent = "Falha ao salvar.";
+      $("#upload").disabled = false;
+    }
+  }
+
+  function move(delta) {
+    const list = categoryItems();
+    const idx = list.findIndex(x => x.id === current?.id);
+    if (idx < 0) return;
+    const nextIndex = Math.max(0, Math.min(list.length - 1, idx + delta));
+    $("#sample").value = list[nextIndex].id;
+    renderCurrent();
+  }
+
+  $("#category").addEventListener("change", () => populateSamples());
+  $("#sample").addEventListener("change", renderCurrent);
+  $("#record").addEventListener("click", () => startRecording().catch(e => showError(e.message)));
+  $("#stop").addEventListener("click", () => stopRecording().catch(e => showError(e.message)));
+  $("#upload").addEventListener("click", uploadRecording);
+  $("#prev").addEventListener("click", () => move(-1));
+  $("#next").addEventListener("click", () => move(1));
+  $("#reload").addEventListener("click", loadReferences);
+
+  loadReferences();
+</script>
+</body>
+</html>

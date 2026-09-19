@@ -1,0 +1,10 @@
+/var/log/caddy/legenda-access.log /opt/legenda/logs/*.log {
+    daily
+    rotate 30
+    missingok
+    notifempty
+    compress
+    delaycompress
+    copytruncate
+    create 0640 root adm
+}

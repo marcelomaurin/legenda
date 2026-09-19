@@ -309,3 +309,33 @@ A verificação cobre:
 - `config.json`, `instances.json` e `nodes.json` fora do Git.
 
 Uma falha retorna exit code 2 e deve bloquear a criação da release candidate.
+
+
+## 11. Build nativo do cliente Lazarus no Windows
+
+O workflow:
+
+```text
+.github/workflows/lazarus-windows.yml
+```
+
+usa runner `windows-latest`, instala Lazarus 4.0.0, baixa o lNet upstream e
+compila:
+
+```text
+lnetbase.lpk
+lnetvisual.lpk
+src/legenda.lpi
+```
+
+Quando aprovado, o workflow publica:
+
+```text
+legenda-lazarus-windows
+  └── legenda.exe
+```
+
+A versão do Lazarus é fixada para evitar que uma atualização automática do
+pacote altere o comportamento do build sem revisão do projeto.
+
+O job possui timeout de 30 minutos para impedir bloqueio indefinido do pipeline.

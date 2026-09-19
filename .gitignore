@@ -12,3 +12,4 @@ benchmark_samples/
 corpus/audio/
 corpus/manifest.jsonl
 instances.json
+nodes.json

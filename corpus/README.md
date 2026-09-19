@@ -129,3 +129,50 @@ As frases abaixo são apenas textos de coleta. Elas não representam resultado d
 - A ANVISA discutiu em Ribeirão Preto os requisitos do equipamento.
 - O NSPAC registrou dados técnicos durante uma reunião com ruído de fundo.
 - A equipe avaliou rapidamente o desfibrilador e registrou o resultado.
+
+
+## Coleta assistida
+
+A interface `web/corpus.html` simplifica a criação das gravações.
+
+Fluxo:
+
+```text
+referência
+   |
+   v
+navegador mostra frase
+   |
+   v
+locutor grava
+   |
+   v
+WAV 16 kHz / mono / PCM 16-bit
+   |
+   v
+pré-escuta
+   |
+   v
+salvar
+   |
+   v
+corpus/audio/<categoria>/<id>.wav
+```
+
+O servidor correspondente é:
+
+```text
+bin/corpus_collection_server.py
+```
+
+Ele recarrega as referências na consulta de `/api/references`, então novos itens
+textuais podem ser adicionados ao corpus sem reiniciar a interface web.
+
+A gravação desativa, quando suportado pelo navegador:
+
+- cancelamento de eco;
+- redução de ruído;
+- ganho automático.
+
+Isso ajuda a preservar as condições reais das categorias de teste, especialmente
+`noise` e `distance`.

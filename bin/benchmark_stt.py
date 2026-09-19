@@ -74,6 +74,7 @@ def read_wav_pcm(path: Path) -> tuple[bytes, int, int, int]:
 @dataclass
 class BenchmarkRow:
     id: str
+    category: str
     audio: str
     reference: str
     hypothesis: str
@@ -154,6 +155,7 @@ def main() -> None:
 
         row = BenchmarkRow(
             id=str(item["id"]),
+            category=str(item.get("category", "uncategorized")),
             audio=str(audio_path),
             reference=str(item["reference"]),
             hypothesis=hypothesis,
@@ -193,6 +195,20 @@ def main() -> None:
     latencies = [row.inference_seconds * 1000 for row in results]
     rtfs = [row.rtf for row in results]
 
+    categories: dict[str, dict[str, Any]] = {}
+    for category in sorted({row.category for row in results}):
+        subset = [row for row in results if row.category == category]
+        subset_wers = [row.wer for row in subset]
+        subset_latencies = [row.inference_seconds * 1000 for row in subset]
+        subset_rtfs = [row.rtf for row in subset]
+        categories[category] = {
+            "samples": len(subset),
+            "wer_mean": fmean(subset_wers) if subset_wers else None,
+            "latency_avg_ms": fmean(subset_latencies) if subset_latencies else None,
+            "latency_p95_ms": percentile(subset_latencies, 0.95),
+            "rtf_mean": fmean(subset_rtfs) if subset_rtfs else None,
+        }
+
     summary = {
         "engine": engine_name,
         "model": model_name,
@@ -204,6 +220,7 @@ def main() -> None:
         "rtf_mean": fmean(rtfs) if rtfs else None,
         "audio_total_seconds": sum(row.duration_seconds for row in results),
         "inference_total_seconds": sum(row.inference_seconds for row in results),
+        "categories": categories,
         "results": [asdict(row) for row in results],
     }
 
@@ -220,6 +237,20 @@ def main() -> None:
         print(f"RTF médio : {summary['rtf_mean']:.4f}")
         print(f"Latência  : {summary['latency_avg_ms']:.1f} ms")
         print(f"P95       : {summary['latency_p95_ms']:.1f} ms")
+
+        if categories:
+            print("\nPor categoria:")
+            print(f"{'CATEGORIA':14} {'N':>4} {'WER':>8} {'LAT(ms)':>10} {'P95':>10} {'RTF':>8}")
+            print("-" * 60)
+            for category, data in categories.items():
+                print(
+                    f"{category:14.14} "
+                    f"{int(data['samples']):4d} "
+                    f"{float(data['wer_mean']):8.4f} "
+                    f"{float(data['latency_avg_ms']):10.1f} "
+                    f"{float(data['latency_p95_ms']):10.1f} "
+                    f"{float(data['rtf_mean']):8.4f}"
+                )
 
 
 if __name__ == "__main__":

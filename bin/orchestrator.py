@@ -15,7 +15,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from orchestrator_control import OrchestratorControlServer
+try:
+    from .orchestrator_control import OrchestratorControlServer
+except ImportError:
+    from orchestrator_control import OrchestratorControlServer
 
 
 @dataclass

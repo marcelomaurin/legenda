@@ -35,6 +35,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "port": 8097,
     "websocket_enabled": True,
     "websocket_port": 8098,
+    "websocket_auth_timeout_seconds": 10,
     "active_room": "principal",
     "room_auth_required": False,
     "room_auth_secret": "",
@@ -245,6 +246,12 @@ class CaptionServer:
             except Empty:
                 continue
 
+            if job.chunk.final and self.session_recorder is not None:
+                try:
+                    self.session_recorder.append(job.chunk.pcm, job.chunk.start_ms)
+                except Exception:
+                    logging.exception("Falha ao gravar áudio final da sessão.")
+
             started = time.monotonic()
             try:
                 result = self.engine.transcribe_pcm(job.chunk.pcm, sample_rate, 2)
@@ -255,8 +262,6 @@ class CaptionServer:
                 latency_ms = int((time.monotonic() - started) * 1000)
                 event = self.make_event(job.chunk, text, result.language, latency_ms)
                 self.telemetry.record_event(job.chunk.final, latency_ms)
-                if job.chunk.final and self.session_recorder is not None:
-                    self.session_recorder.append(job.chunk.pcm, job.chunk.start_ms)
                 self.enqueue_event(event)
 
                 logging.info(
@@ -344,7 +349,18 @@ class CaptionServer:
     def websocket_handler(self, connection: Any) -> None:
         client_info: dict[str, str] | None = None
         try:
-            raw = connection.recv()
+            try:
+                raw = connection.recv(
+                    timeout=float(self.config.get("websocket_auth_timeout_seconds", 10))
+                )
+            except TimeoutError:
+                connection.send(json.dumps({
+                    "type": "error",
+                    "code": "AUTH_TIMEOUT",
+                    "message": "Tempo limite de autenticação excedido."
+                }, ensure_ascii=False))
+                return
+
             request = json.loads(raw)
 
             if request.get("type") != "auth":
@@ -465,10 +481,7 @@ class CaptionServer:
                                 if not str(key).startswith("_")
                             }
                             persisted["input_device_index"] = requested_index
-                            self.config_path.write_text(
-                                json.dumps(persisted, ensure_ascii=False, indent=2),
-                                encoding="utf-8",
-                            )
+                            self._write_config_atomic(persisted)
                             self.config["input_device_index"] = requested_index
 
                             connection.send(json.dumps({
@@ -622,12 +635,30 @@ class CaptionServer:
 
     # ---------- persistência / distribuição ----------
 
+    def _write_config_atomic(self, persisted: dict[str, Any]) -> None:
+        self.config_path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = self.config_path.with_name(
+            f".{self.config_path.name}.{uuid.uuid4().hex}.tmp"
+        )
+        try:
+            temp_path.write_text(
+                json.dumps(persisted, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            os.replace(temp_path, self.config_path)
+        finally:
+            try:
+                temp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+
     def save_event(self, event: CaptionEvent) -> None:
-        if not self.config.get("save_transcript", True) or not event.final:
+        if not event.final:
             return
 
-        with self.transcript_file.open("a", encoding="utf-8") as output:
-            output.write(event.to_json() + "\n")
+        if self.config.get("save_transcript", True):
+            with self.transcript_file.open("a", encoding="utf-8") as output:
+                output.write(event.to_json() + "\n")
 
         if self.subtitle_exporter is not None:
             self.subtitle_exporter.append(event)
@@ -689,7 +720,24 @@ class CaptionServer:
                 break
             self.submit_audio(chunk)
 
+    def _drain_queues(self, timeout_seconds: float = 5.0) -> None:
+        deadline = time.monotonic() + timeout_seconds
+        while time.monotonic() < deadline:
+            if (
+                self.transcription_jobs.unfinished_tasks == 0
+                and self.events.unfinished_tasks == 0
+            ):
+                return
+            time.sleep(0.05)
+
+        logging.warning(
+            "Encerramento com filas pendentes | stt=%s | eventos=%s",
+            self.transcription_jobs.unfinished_tasks,
+            self.events.unfinished_tasks,
+        )
+
     def stop(self) -> None:
+        self._drain_queues()
         self.stop_event.set()
 
         if self.server_socket is not None:

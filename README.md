@@ -807,3 +807,137 @@ e não são versionados pelo Git.
 
 Essa separação permite que uma falha, saturação de fila ou troca de dispositivo
 em uma sala não interrompa as demais.
+
+
+## Corpus de referência do Legenda
+
+O repositório agora contém um corpus textual estruturado em:
+
+```text
+corpus/
+├── README.md
+└── references/
+    ├── clean.jsonl
+    ├── noise.jsonl
+    ├── fast.jsonl
+    ├── distance.jsonl
+    ├── names.jsonl
+    ├── acronyms.jsonl
+    ├── technical.jsonl
+    └── mixed.jsonl
+```
+
+As categorias permitem avaliar separadamente onde o reconhecimento perde
+qualidade:
+
+- `clean`: fala limpa;
+- `noise`: ruído de fundo;
+- `fast`: fala rápida;
+- `distance`: maior distância do microfone;
+- `names`: nomes próprios e localidades;
+- `acronyms`: siglas;
+- `technical`: termos técnicos;
+- `mixed`: combinação de dificuldades.
+
+Os arquivos de áudio devem ser colocados em:
+
+```text
+corpus/audio/<categoria>/<id>.wav
+```
+
+Por exemplo:
+
+```text
+corpus/audio/technical/technical-001.wav
+```
+
+Os áudios não são versionados pelo Git.
+
+### Validar o corpus
+
+```bash
+python bin/validate_corpus.py --corpus-dir corpus
+```
+
+O validador verifica:
+
+- IDs duplicados;
+- categorias inválidas;
+- referências vazias;
+- presença dos áudios;
+- WAV mono;
+- PCM 16-bit;
+- sample rate;
+- quantidade de locutores;
+- cobertura por categoria.
+
+O formato recomendado é:
+
+```text
+mono
+PCM 16-bit
+16 kHz
+```
+
+### Gerar o manifesto
+
+Quando as gravações estiverem disponíveis:
+
+```bash
+python bin/prepare_corpus_manifest.py \
+  --corpus-dir corpus \
+  --output corpus/manifest.jsonl
+```
+
+Para exigir que todas as referências tenham áudio:
+
+```bash
+python bin/prepare_corpus_manifest.py \
+  --corpus-dir corpus \
+  --output corpus/manifest.jsonl \
+  --strict
+```
+
+O manifesto resultante já pode ser usado diretamente:
+
+```bash
+python bin/benchmark_stt.py corpus/manifest.jsonl \
+  --engine faster-whisper \
+  --model small \
+  --device cpu \
+  --compute-type int8
+```
+
+### Resultado por categoria
+
+Além do resultado global, o benchmark agora calcula:
+
+```text
+CATEGORIA          N      WER    LAT(ms)        P95      RTF
+clean             ...
+noise             ...
+names             ...
+acronyms          ...
+technical         ...
+```
+
+Isso permite identificar, por exemplo, um modelo que tenha bom WER global mas
+desempenho ruim justamente em siglas ou termos técnicos.
+
+### Política de coleta
+
+As referências textuais podem ser versionadas. Os áudios reais ficam fora do Git.
+
+Para locutores, use identificadores pseudônimos como:
+
+```text
+speaker-01
+speaker-02
+speaker-03
+```
+
+Evite dados pessoais desnecessários e registre apenas gravações cuja utilização
+no corpus seja autorizada.
+
+Um corpus inicial razoável é de aproximadamente 20 frases por categoria e pelo
+menos 3 locutores, crescendo posteriormente sem alterar os critérios de coleta.

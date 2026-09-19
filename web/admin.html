@@ -182,6 +182,20 @@
   </section>
 
   <section class="panel">
+    <h2>Áudio</h2>
+    <div class="rows">
+      <div>Dispositivo ativo</div><div id="activeAudioDevice">—</div>
+      <div>Selecionar dispositivo</div>
+      <div>
+        <select id="audioDevice"></select>
+        <button id="refreshAudio" type="button">Atualizar lista</button>
+        <button id="saveAudio" type="button">Salvar</button>
+        <div class="muted" id="audioHint">A alteração exige reinício da instância.</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
     <h2>Participantes por papel</h2>
     <table>
       <thead><tr><th>Papel</th><th>Quantidade</th></tr></thead>
@@ -264,6 +278,25 @@
     }
   }
 
+  function renderAudioDevices(data) {
+    const select = $("#audioDevice");
+    select.replaceChildren();
+    for (const device of data.devices || []) {
+      const option = document.createElement("option");
+      option.value = String(device.index);
+      option.textContent = `[${device.index}] ${device.name} · ${device.max_input_channels} canais · ${device.default_sample_rate} Hz`;
+      option.selected = Number(device.index) === Number(data.active_index);
+      select.appendChild(option);
+    }
+
+    const active = (data.devices || []).find(
+      item => Number(item.index) === Number(data.active_index)
+    );
+    $("#activeAudioDevice").textContent = active
+      ? `[${active.index}] ${active.name}`
+      : (data.active_index == null ? "Padrão do sistema" : `Índice ${data.active_index}`);
+  }
+
   function render(data) {
     $("#webClients").textContent = data.clients?.websocket ?? 0;
     $("#tcpClients").textContent = data.clients?.tcp ?? 0;
@@ -335,12 +368,22 @@
         }
         $("#roomInfo").textContent = `Sala: ${data.room_name || data.room} · Sessão: ${data.session_id}`;
         ws.send(JSON.stringify({type: "subscribe_telemetry"}));
+        ws.send(JSON.stringify({type: "list_audio_devices"}));
         setStatus(true, "Monitorando");
         return;
       }
 
       if (data.type === "telemetry") {
         render(data);
+      }
+
+      if (data.type === "audio_devices") {
+        renderAudioDevices(data);
+      }
+
+      if (data.type === "audio_device_saved") {
+        $("#audioHint").textContent = data.message || "Dispositivo salvo. Reinicie a instância.";
+        ws.send(JSON.stringify({type: "list_audio_devices"}));
       }
     });
 
@@ -353,6 +396,19 @@
 
     ws.addEventListener("error", () => ws.close());
   }
+
+  $("#refreshAudio").addEventListener("click", () => {
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({type: "list_audio_devices"}));
+    }
+  });
+
+  $("#saveAudio").addEventListener("click", () => {
+    const index = Number($("#audioDevice").value);
+    if (socket && socket.readyState === WebSocket.OPEN && Number.isInteger(index)) {
+      socket.send(JSON.stringify({type: "set_audio_device", index}));
+    }
+  });
 
   connect();
 </script>

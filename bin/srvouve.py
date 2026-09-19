@@ -109,6 +109,7 @@ class TranscriptionJob:
 class CaptionServer:
     def __init__(self, config: dict[str, Any]) -> None:
         self.config = config
+        self.config_path = Path(str(config.get("_config_path", "config.json")))
 
         self.clients: set[socket.socket] = set()
         self.clients_lock = threading.Lock()
@@ -444,6 +445,45 @@ class CaptionServer:
                 if message.get("type") == "unsubscribe_telemetry":
                     client_info.pop("telemetry", None)
 
+                if message.get("type") == "set_audio_device":
+                    if client_info.get("role") != "admin":
+                        connection.send(json.dumps({
+                            "type": "error",
+                            "code": "ADMIN_REQUIRED",
+                            "message": "Alteração de dispositivo disponível apenas para administradores."
+                        }, ensure_ascii=False))
+                    else:
+                        try:
+                            requested_index = int(message.get("index"))
+                            valid_indexes = {item["index"] for item in list_input_devices()}
+                            if requested_index not in valid_indexes:
+                                raise ValueError("Índice de dispositivo inválido.")
+
+                            persisted = {
+                                key: value
+                                for key, value in self.config.items()
+                                if not str(key).startswith("_")
+                            }
+                            persisted["input_device_index"] = requested_index
+                            self.config_path.write_text(
+                                json.dumps(persisted, ensure_ascii=False, indent=2),
+                                encoding="utf-8",
+                            )
+                            self.config["input_device_index"] = requested_index
+
+                            connection.send(json.dumps({
+                                "type": "audio_device_saved",
+                                "index": requested_index,
+                                "restart_required": True,
+                                "message": "Dispositivo salvo. Reinicie esta instância para aplicar."
+                            }, ensure_ascii=False))
+                        except Exception as exc:
+                            connection.send(json.dumps({
+                                "type": "error",
+                                "code": "AUDIO_DEVICE_SAVE_FAILED",
+                                "message": str(exc)
+                            }, ensure_ascii=False))
+
                 if message.get("type") == "list_audio_devices":
                     if client_info.get("role") != "admin":
                         connection.send(json.dumps({
@@ -679,6 +719,7 @@ def load_config(path: str = "config.json") -> dict[str, Any]:
             user_config = json.load(source)
         config.update(user_config)
 
+    config["_config_path"] = str(config_path)
     return config
 
 

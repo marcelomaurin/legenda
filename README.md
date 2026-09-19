@@ -271,13 +271,16 @@ SESSION_ID.diarized.vtt
 Os eventos passam a receber o campo `speaker`, definido pelo maior intervalo de
 sobreposição entre a fala transcrita e a diarização.
 
-## Próximas etapas
+## Validações antes de produção
 
-- tradução simultânea;
-- salas;
-- painel de métricas;
-- benchmark WER e latência;
-- seleção de dispositivo de áudio pela interface.
+Os principais recursos planejados para a v2 já estão implementados. Antes de
+uso em produção, ainda é recomendável:
+
+- coletar corpus real suficiente para obter métricas representativas;
+- validar o modelo STT escolhido no hardware de destino;
+- testar HTTPS/WSS no ambiente final;
+- executar teste prolongado de estabilidade com várias horas de áudio;
+- validar o cliente Lazarus compilado na versão de Lazarus usada em produção.
 
 
 ## Salas e autenticação
@@ -1465,3 +1468,50 @@ O hash pode ser conferido no PowerShell:
 ```powershell
 Get-FileHash .\Legenda-2.0.0-rc1-win64.zip -Algorithm SHA256
 ```
+
+
+## Hardening final
+
+Os serviços administrativos aplicam uma regra adicional: qualquer bind fora de
+loopback exige token. Por exemplo, iniciar o fleet, o control plane ou o coletor
+em `0.0.0.0` sem autenticação agora falha na inicialização.
+
+As comparações de Bearer token usam comparação em tempo constante.
+
+O WebSocket principal usa:
+
+```json
+"websocket_auth_timeout_seconds": 10
+```
+
+Clientes que conectarem e não enviarem a primeira mensagem de autenticação nesse
+intervalo são desconectados.
+
+A gravação WAV dos segmentos finais ocorre antes do STT. Assim, falha de
+transcrição ou resultado vazio não elimina o áudio bruto capturado.
+
+`save_transcript` e `export_subtitles` são independentes: é possível gerar
+SRT/VTT mesmo com JSONL desabilitado.
+
+No encerramento, o servidor tenta drenar as filas de STT e eventos antes de
+fechar o WAV, reduzindo risco de perda dos últimos segmentos.
+
+### Persistência do dispositivo de áudio
+
+Por padrão, o orquestrador preserva entre reinícios:
+
+```json
+"runtime_persist_keys": ["input_device_index"]
+```
+
+Isso impede que uma troca de microfone feita pelo painel seja perdida quando o
+supervisor reinicia.
+
+Para descartar ajustes runtime e reconstruir tudo a partir de
+`instances.json`:
+
+```json
+"reset_runtime_settings": true
+```
+
+Depois da primeira inicialização com essa opção, volte o valor para `false`.

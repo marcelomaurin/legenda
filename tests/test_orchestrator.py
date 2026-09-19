@@ -1,6 +1,7 @@
 import json
 import tempfile
 import unittest
+from unittest.mock import MagicMock, patch
 from pathlib import Path
 
 from bin.orchestrator import Orchestrator
@@ -119,6 +120,51 @@ class OrchestratorTests(unittest.TestCase):
                 second.instances[0].config_path.read_text(encoding="utf-8")
             )
             self.assertEqual(rebuilt["input_device_index"], 1)
+
+
+    def test_restarts_crashed_desired_instance(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "instances.json").write_text(json.dumps({
+                "instances": [{"name": "sala1", "overrides": {}}]
+            }), encoding="utf-8")
+
+            orchestrator = Orchestrator(root / "instances.json")
+            instance = orchestrator.instances[0]
+
+            crashed = MagicMock()
+            crashed.poll.return_value = 1
+            crashed.returncode = 1
+            instance.process = crashed
+            instance.desired_running = True
+
+            with patch.object(orchestrator, "start") as start:
+                restarted = orchestrator.reconcile_once()
+
+            start.assert_called_once_with(instance)
+            self.assertEqual(restarted, ["sala1"])
+
+    def test_does_not_restart_admin_stopped_instance(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "instances.json").write_text(json.dumps({
+                "instances": [{"name": "sala1", "overrides": {}}]
+            }), encoding="utf-8")
+
+            orchestrator = Orchestrator(root / "instances.json")
+            instance = orchestrator.instances[0]
+
+            stopped = MagicMock()
+            stopped.poll.return_value = 1
+            stopped.returncode = 0
+            instance.process = stopped
+            instance.desired_running = False
+
+            with patch.object(orchestrator, "start") as start:
+                restarted = orchestrator.reconcile_once()
+
+            start.assert_not_called()
+            self.assertEqual(restarted, [])
 
 
 if __name__ == "__main__":

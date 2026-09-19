@@ -1,6 +1,7 @@
 name: lazarus-windows
 
 on:
+  pull_request:
   push:
     branches: ["modernizacao-v2"]
     paths:

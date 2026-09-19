@@ -47,5 +47,8 @@
   "export_subtitles": true,
   "save_session_audio": true,
   "transcript_dir": "transcripts",
-  "retention_days": 30
+  "retention_days": 30,
+  "retention_extra_dirs": [
+    "logs"
+  ]
 }

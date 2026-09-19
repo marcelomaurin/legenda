@@ -1600,3 +1600,41 @@ deploy/logrotate-legenda.example
 
 Os exemplos publicam WebSocket e APIs administrativas por HTTPS/WSS, mas
 deliberadamente não publicam o TCP legado 8097.
+
+
+## Validação automatizada final
+
+Além da suíte unitária, o projeto agora possui validações operacionais executáveis.
+
+### Soak test do protocolo TCP/JSONL
+
+```bash
+python bin/protocol_soak.py --events 10000 --payload-size 128
+```
+
+O teste verifica transmissão em volume, sequência, framing JSONL e perda de
+eventos sem depender de microfone ou STT.
+
+### Readiness de release
+
+```bash
+python bin/release_readiness.py
+```
+
+Uma falha retorna exit code 2. O workflow de release Windows executa essa
+verificação antes de montar o pacote.
+
+### Cliente Lazarus
+
+Há dois pipelines independentes:
+
+```text
+.github/workflows/lazarus-build.yml
+.github/workflows/lazarus-windows.yml
+```
+
+O primeiro gera o cliente Linux e o segundo gera o cliente Windows nativo
+`legenda.exe`.
+
+As dependências legadas Indy e Industrial foram removidas; o cliente usa LCL e
+lNet.

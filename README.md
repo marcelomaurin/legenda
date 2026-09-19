@@ -53,7 +53,10 @@ WebRTC VAD
 - TCP e WebSocket;
 - cliente Lazarus compatível;
 - cliente web responsivo e acessível;
-- persistência JSONL por sessão.
+- persistência JSONL por sessão;
+- exportação automática SRT e WebVTT;
+- gravação WAV da sessão preservando a linha do tempo;
+- diarização opcional pós-sessão com pyannote Community-1.
 
 ## Instalação
 
@@ -215,10 +218,53 @@ http://HOST_WEB:8080/?host=IP_DO_SERVIDOR&port=8098
 }
 ```
 
+## Arquivos gerados por sessão
+
+Com a configuração padrão, a pasta `transcripts/` recebe:
+
+```text
+<session_id>.jsonl
+<session_id>.srt
+<session_id>.vtt
+<session_id>.wav
+```
+
+O WAV é montado com os intervalos de silêncio preservados, permitindo reconciliar
+corretamente os timestamps da transcrição com a diarização.
+
+## Diarização de locutores
+
+A diarização é opcional e fica separada das dependências básicas:
+
+```bash
+pip install -r requirements-diarization.txt
+```
+
+O pipeline padrão usa:
+
+```text
+pyannote/speaker-diarization-community-1
+```
+
+Depois de encerrar uma sessão:
+
+```bash
+python bin/diarize_session.py SESSION_ID --token SEU_TOKEN_HF
+```
+
+O comando gera:
+
+```text
+SESSION_ID.diarized.jsonl
+SESSION_ID.diarized.srt
+SESSION_ID.diarized.vtt
+```
+
+Os eventos passam a receber o campo `speaker`, definido pelo maior intervalo de
+sobreposição entre a fala transcrita e a diarização.
+
 ## Próximas etapas
 
-- exportação SRT/WebVTT;
-- identificação de locutores;
 - tradução simultânea;
 - salas;
 - painel de métricas;

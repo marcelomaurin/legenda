@@ -182,6 +182,20 @@ class Orchestrator:
             f"| auth={'on' if self.control_token else 'off'}"
         )
 
+    def reconcile_once(self) -> list[str]:
+        restarted: list[str] = []
+        for instance in self.instances:
+            if (
+                instance.desired_running
+                and instance.process
+                and instance.process.poll() is not None
+            ):
+                code = instance.process.returncode
+                print(f"[{instance.name}] encerrou código={code}; reiniciando")
+                self.start(instance)
+                restarted.append(instance.name)
+        return restarted
+
     def run(self) -> None:
         self.start_control_server()
 
@@ -191,15 +205,7 @@ class Orchestrator:
         try:
             while True:
                 time.sleep(1)
-                for instance in self.instances:
-                    if (
-                        instance.desired_running
-                        and instance.process
-                        and instance.process.poll() is not None
-                    ):
-                        code = instance.process.returncode
-                        print(f"[{instance.name}] encerrou código={code}; reiniciando")
-                        self.start(instance)
+                self.reconcile_once()
         except KeyboardInterrupt:
             print("\nEncerrando instâncias...")
         finally:

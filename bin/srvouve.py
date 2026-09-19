@@ -17,6 +17,7 @@ from typing import Any
 
 from stt_engines import SpeechEngine, create_engine
 from vad_capture import AudioChunk, VADAudioCapture
+from session_export import SessionWaveRecorder, SubtitleExporter
 
 try:
     from websockets.sync.server import serve as websocket_serve
@@ -54,6 +55,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "transcription_queue_size": 8,
     "listen_backlog": 16,
     "save_transcript": True,
+    "export_subtitles": True,
+    "save_session_audio": True,
     "transcript_dir": "transcripts",
 }
 
@@ -130,6 +133,19 @@ class CaptionServer:
         transcript_dir = Path(str(config["transcript_dir"]))
         transcript_dir.mkdir(parents=True, exist_ok=True)
         self.transcript_file = transcript_dir / f"{self.session_id}.jsonl"
+        self.subtitle_exporter = (
+            SubtitleExporter(transcript_dir, self.session_id)
+            if bool(config.get("export_subtitles", True))
+            else None
+        )
+        self.session_recorder = (
+            SessionWaveRecorder(
+                transcript_dir / f"{self.session_id}.wav",
+                sample_rate=int(config["sample_rate"]),
+            )
+            if bool(config.get("save_session_audio", True))
+            else None
+        )
 
     def next_sequence(self) -> int:
         with self.sequence_lock:
@@ -207,6 +223,8 @@ class CaptionServer:
 
                 latency_ms = int((time.monotonic() - started) * 1000)
                 event = self.make_event(job.chunk, text, result.language, latency_ms)
+                if job.chunk.final and self.session_recorder is not None:
+                    self.session_recorder.append(job.chunk.pcm, job.chunk.start_ms)
                 self.enqueue_event(event)
 
                 logging.info(
@@ -342,6 +360,9 @@ class CaptionServer:
         with self.transcript_file.open("a", encoding="utf-8") as output:
             output.write(event.to_json() + "\n")
 
+        if self.subtitle_exporter is not None:
+            self.subtitle_exporter.append(event)
+
     def sender_loop(self) -> None:
         while not self.stop_event.is_set():
             try:
@@ -408,6 +429,13 @@ class CaptionServer:
 
         for client in self.snapshot_clients():
             self.remove_client(client)
+
+        if self.session_recorder is not None:
+            try:
+                self.session_recorder.close()
+            except Exception:
+                logging.exception("Falha ao fechar áudio da sessão.")
+            self.session_recorder = None
 
 
 def load_config(path: str = "config.json") -> dict[str, Any]:

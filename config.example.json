@@ -1,0 +1,12 @@
+{
+  "host": "0.0.0.0",
+  "port": 8097,
+  "language": "pt-BR",
+  "phrase_time_limit": 5,
+  "ambient_noise_duration": 1.0,
+  "pause_threshold": 0.8,
+  "queue_size": 100,
+  "listen_backlog": 16,
+  "save_transcript": true,
+  "transcript_dir": "transcripts"
+}

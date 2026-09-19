@@ -7,6 +7,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import urlparse
 
+try:
+    from .security_utils import bearer_matches, require_token_for_remote_bind
+except ImportError:
+    from security_utils import bearer_matches, require_token_for_remote_bind
+
 
 class OrchestratorControlServer:
     def __init__(self, orchestrator: Any, host: str, port: int, token: str) -> None:
@@ -15,6 +20,7 @@ class OrchestratorControlServer:
         self.port = port
         self.token = token
         self.httpd: ThreadingHTTPServer | None = None
+        require_token_for_remote_bind(host, token, "orchestrator-control")
 
     def start(self) -> ThreadingHTTPServer:
         orchestrator = self.orchestrator
@@ -30,7 +36,7 @@ class OrchestratorControlServer:
                 if not expected_token:
                     return True
                 auth = self.headers.get("Authorization", "")
-                return auth == f"Bearer {expected_token}"
+                return bearer_matches(auth, expected_token)
 
             def _json(self, status: int, payload: Any) -> None:
                 data = json.dumps(payload, ensure_ascii=False).encode("utf-8")

@@ -22,6 +22,44 @@ def overlap_ms(a0: int, a1: int, b0: int, b1: int) -> int:
     return max(0, min(a1, b1) - max(a0, b0))
 
 
+def extract_turns(diarization: Any) -> list[tuple[int, int, str]]:
+    turns: list[tuple[int, int, str]] = []
+    if hasattr(diarization, "itertracks"):
+        iterator = (
+            (turn, speaker)
+            for turn, _, speaker in diarization.itertracks(yield_label=True)
+        )
+    else:
+        iterator = iter(diarization)
+
+    for turn, speaker in iterator:
+        turns.append(
+            (int(turn.start * 1000), int(turn.end * 1000), str(speaker))
+        )
+    return turns
+
+
+def assign_speakers(
+    events: list[dict[str, Any]],
+    turns: list[tuple[int, int, str]],
+) -> list[dict[str, Any]]:
+    for event in events:
+        start_ms = int(event.get("start_ms", 0))
+        end_ms = int(event.get("end_ms", start_ms))
+        best_speaker = None
+        best_overlap = 0
+
+        for t0, t1, speaker in turns:
+            ov = overlap_ms(start_ms, end_ms, t0, t1)
+            if ov > best_overlap:
+                best_overlap = ov
+                best_speaker = speaker
+
+        event["speaker"] = best_speaker
+
+    return events
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("session", help="ID da sessão ou caminho base sem extensão")
@@ -56,32 +94,18 @@ def main() -> None:
     if diarization is None:
         diarization = output.speaker_diarization
 
-    turns: list[tuple[int, int, str]] = []
-    for turn, speaker in diarization:
-        turns.append((int(turn.start * 1000), int(turn.end * 1000), str(speaker)))
-
-    events = load_events(jsonl_path)
-
-    for event in events:
-        start_ms = int(event.get("start_ms", 0))
-        end_ms = int(event.get("end_ms", start_ms))
-        best_speaker = None
-        best_overlap = -1
-
-        for t0, t1, speaker in turns:
-            ov = overlap_ms(start_ms, end_ms, t0, t1)
-            if ov > best_overlap:
-                best_overlap = ov
-                best_speaker = speaker
-
-        event["speaker"] = best_speaker
+    turns = extract_turns(diarization)
+    events = assign_speakers(load_events(jsonl_path), turns)
 
     out_jsonl = base_dir / f"{session_id}.diarized.jsonl"
     with out_jsonl.open("w", encoding="utf-8") as out:
         for event in events:
             out.write(json.dumps(event, ensure_ascii=False) + "\n")
 
-    from session_export import SubtitleExporter
+    try:
+        from .session_export import SubtitleExporter
+    except ImportError:
+        from session_export import SubtitleExporter
     exporter = SubtitleExporter(base_dir, session_id + ".diarized")
     for event in events:
         class Obj:

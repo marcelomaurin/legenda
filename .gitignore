@@ -6,3 +6,5 @@ transcripts/
 *.log
 src/lib/
 src/backup/
+benchmark_results/
+benchmark_samples/

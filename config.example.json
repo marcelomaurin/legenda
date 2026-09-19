@@ -4,23 +4,23 @@
   "websocket_enabled": true,
   "websocket_port": 8098,
   "websocket_auth_timeout_seconds": 10,
-
   "active_room": "principal",
   "room_name": "Sala principal",
   "room_auth_required": true,
   "room_auth_secret": "TROQUE-ESTA-CHAVE-POR-UMA-CHAVE-SEGURA-32C",
-  "allowed_languages": ["pt-BR", "en", "es"],
-
+  "allowed_languages": [
+    "pt-BR",
+    "en",
+    "es"
+  ],
   "translation_provider": "libretranslate",
   "translation_endpoint": "http://127.0.0.1:5000",
   "translation_api_key": "",
   "translation_timeout_seconds": 8,
   "translate_partials": false,
   "telemetry_interval_seconds": 2,
-
   "language": "pt-BR",
   "stt_engine": "faster-whisper",
-
   "whisper_model": "small",
   "whisper_device": "cpu",
   "whisper_compute_type": "int8",
@@ -28,28 +28,24 @@
   "whisper_vad_filter": true,
   "whisper_vad_min_silence_ms": 300,
   "hotwords": "",
-
   "sample_rate": 16000,
   "vad_frame_ms": 30,
   "vad_mode": 2,
   "vad_padding_ms": 300,
   "vad_start_ratio": 0.6,
   "vad_end_ratio": 0.8,
-
   "partial_enabled": true,
   "partial_interval_ms": 900,
   "min_partial_ms": 700,
   "min_utterance_ms": 250,
   "max_utterance_ms": 15000,
-
   "input_device_index": null,
-
   "queue_size": 100,
   "transcription_queue_size": 8,
   "listen_backlog": 16,
-
   "save_transcript": true,
   "export_subtitles": true,
   "save_session_audio": true,
-  "transcript_dir": "transcripts"
+  "transcript_dir": "transcripts",
+  "retention_days": 30
 }

@@ -56,7 +56,13 @@ WebRTC VAD
 - persistência JSONL por sessão;
 - exportação automática SRT e WebVTT;
 - gravação WAV da sessão preservando a linha do tempo;
-- diarização opcional pós-sessão com pyannote Community-1.
+- diarização opcional pós-sessão com pyannote Community-1;
+- sala web autenticada por token HMAC com validade;
+- convites assinados por URL;
+- seleção de idioma por participante;
+- tradução plugável com cache;
+- suporte a LibreTranslate local/remoto;
+- testes unitários e CI leve no GitHub Actions.
 
 ## Instalação
 
@@ -270,3 +276,129 @@ sobreposição entre a fala transcrita e a diarização.
 - painel de métricas;
 - benchmark WER e latência;
 - seleção de dispositivo de áudio pela interface.
+
+
+## Salas e autenticação
+
+Cada processo do servidor representa uma sala de áudio ativa. A configuração:
+
+```json
+"active_room": "principal",
+"room_name": "Sala principal",
+"room_auth_required": true,
+"room_auth_secret": "TROQUE-ESTA-CHAVE-POR-UMA-CHAVE-SEGURA-32C"
+```
+
+O segredo real deve ficar apenas em `config.json`, que já é ignorado pelo Git.
+
+Gere um convite com validade:
+
+```bash
+python bin/generate_room_token.py principal \
+  --ttl 7200 \
+  --web-url http://SERVIDOR:8080/
+```
+
+O comando imprime o token e uma URL semelhante a:
+
+```text
+http://SERVIDOR:8080/?room=principal&token=TOKEN
+```
+
+O token contém sala, papel e expiração, assinados com HMAC-SHA256. O servidor
+rejeita token adulterado, expirado ou emitido para outra sala.
+
+Papéis previstos:
+
+```text
+viewer
+presenter
+admin
+```
+
+Nesta versão, o papel já é autenticado e entregue ao cliente; permissões
+administrativas específicas podem ser acrescentadas sobre essa base.
+
+### Várias salas ao mesmo tempo
+
+Uma instância captura um fluxo de áudio e publica uma sala ativa. Para dois
+auditórios simultâneos, execute duas instâncias com `active_room`, dispositivo
+de áudio e portas diferentes. Isso evita misturar duas fontes físicas em uma
+mesma sessão.
+
+## Tradução simultânea
+
+Os clientes escolhem o idioma individualmente:
+
+```json
+"allowed_languages": ["pt-BR", "en", "es"]
+```
+
+A tradução é feita apenas na distribuição WebSocket. O JSONL/SRT/VTT original
+continua preservando a transcrição de origem.
+
+Para usar LibreTranslate:
+
+```json
+"translation_provider": "libretranslate",
+"translation_endpoint": "http://127.0.0.1:5000",
+"translation_api_key": ""
+```
+
+Se o idioma solicitado for o mesmo idioma de origem, nenhuma chamada de tradução
+é feita. Traduções repetidas usam cache em memória.
+
+Por padrão:
+
+```json
+"translate_partials": false
+```
+
+Assim, clientes em outro idioma recebem apenas frases finais traduzidas, evitando
+multiplicar custo e latência durante as atualizações parciais. Se o tradutor local
+for rápido o suficiente, essa opção pode ser ativada.
+
+O navegador pode trocar de idioma sem reconectar. Ele envia:
+
+```json
+{
+  "type": "set_language",
+  "language": "es"
+}
+```
+
+## Protocolo de entrada WebSocket
+
+A primeira mensagem do navegador é obrigatoriamente:
+
+```json
+{
+  "type": "auth",
+  "room": "principal",
+  "token": "TOKEN_ASSINADO",
+  "language": "pt-BR"
+}
+```
+
+Depois da validação, o servidor responde com `welcome`, contendo sala, sessão,
+papel autenticado e idiomas disponíveis.
+
+## Testes
+
+Os testes leves não carregam Whisper, PyAudio ou PyTorch:
+
+```bash
+python -m unittest discover -s tests -p "test_*.py"
+```
+
+Eles verificam:
+
+- assinatura e expiração dos tokens;
+- isolamento entre salas;
+- detecção de adulteração;
+- geração SRT/WebVTT;
+- normalização de idioma;
+- cache de tradução.
+
+O workflow em `.github/workflows/tests.yml` executa essa suíte em push e pull
+request.

@@ -18,7 +18,10 @@ from pathlib import Path
 from statistics import fmean
 from typing import Any
 
-from stt_engines import create_engine
+try:
+    from .stt_engines import create_engine
+except ImportError:
+    from stt_engines import create_engine
 
 
 def normalize_text(text: str) -> list[str]:

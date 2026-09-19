@@ -4,3 +4,4 @@ websockets>=15,<16
 numpy>=1.26,<3
 faster-whisper>=1.2.1,<2
 webrtcvad-wheels>=2.0.14,<3
+psutil>=6,<8

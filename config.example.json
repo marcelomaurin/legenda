@@ -4,6 +4,18 @@
   "websocket_enabled": true,
   "websocket_port": 8098,
 
+  "active_room": "principal",
+  "room_name": "Sala principal",
+  "room_auth_required": true,
+  "room_auth_secret": "TROQUE-ESTA-CHAVE-POR-UMA-CHAVE-SEGURA-32C",
+  "allowed_languages": ["pt-BR", "en", "es"],
+
+  "translation_provider": "libretranslate",
+  "translation_endpoint": "http://127.0.0.1:5000",
+  "translation_api_key": "",
+  "translation_timeout_seconds": 8,
+  "translate_partials": false,
+
   "language": "pt-BR",
   "stt_engine": "faster-whisper",
 

@@ -86,10 +86,21 @@
       flex-wrap: wrap;
     }
 
-    button {
+    button, select {
       font: inherit;
       padding: .55rem .75rem;
-      cursor: pointer;
+    }
+
+    button { cursor: pointer; }
+
+    #authError {
+      display: none;
+      width: min(96vw, 900px);
+      margin: 0 auto;
+      padding: .75rem 1rem;
+      border: 1px solid currentColor;
+      border-radius: .5rem;
+      text-align: center;
     }
 
     #metrics {
@@ -111,6 +122,10 @@
     </div>
 
     <div class="controls" aria-label="Controles de legenda">
+      <label>
+        Idioma
+        <select id="language" aria-label="Idioma da legenda"></select>
+      </label>
       <button id="smaller" type="button" aria-label="Diminuir fonte">A−</button>
       <button id="larger" type="button" aria-label="Aumentar fonte">A+</button>
       <button id="fullscreen" type="button">Tela cheia</button>
@@ -118,10 +133,14 @@
   </header>
 
   <main aria-live="polite" aria-atomic="true">
-    <div id="caption" class="final">Aguardando legenda…</div>
+    <div>
+      <div id="authError" role="alert"></div>
+      <div id="caption" class="final">Aguardando autenticação…</div>
+    </div>
   </main>
 
   <footer>
+    <span id="room">Sala: —</span>
     <span id="session">Sessão: —</span>
     <span id="metrics">—</span>
     <span id="clock">—</span>
@@ -129,6 +148,9 @@
 
   <script>
     const caption = document.querySelector("#caption");
+    const roomLabel = document.querySelector("#room");
+    const languageSelect = document.querySelector("#language");
+    const authError = document.querySelector("#authError");
     const status = document.querySelector("#status");
     const statusText = document.querySelector("#statusText");
     const session = document.querySelector("#session");
@@ -147,9 +169,35 @@
       return `${protocol}://${host}:${port}`;
     }
 
-    function setConnectionState(connected) {
+    function setConnectionState(connected, text = null) {
       status.className = "status " + (connected ? "online" : "offline");
-      statusText.textContent = connected ? "Ao vivo" : "Desconectado";
+      statusText.textContent = text || (connected ? "Ao vivo" : "Desconectado");
+    }
+
+    function connectionParams() {
+      const params = new URLSearchParams(location.search);
+      return {
+        room: params.get("room") || "principal",
+        token: params.get("token") || "",
+        language: params.get("lang") || "pt-BR"
+      };
+    }
+
+    function showError(message) {
+      authError.textContent = message;
+      authError.style.display = "block";
+      caption.textContent = "Não foi possível entrar na sala.";
+    }
+
+    function configureLanguages(languages, selected) {
+      languageSelect.replaceChildren();
+      for (const language of languages || []) {
+        const option = document.createElement("option");
+        option.value = language;
+        option.textContent = language;
+        option.selected = language === selected;
+        languageSelect.appendChild(option);
+      }
     }
 
     function renderCaption(data) {
@@ -173,27 +221,74 @@
       metrics.textContent = `${engine} · ${mode} · ${latency}`;
     }
 
+    let activeSocket = null;
+
     function connect() {
       clearTimeout(retryTimer);
+      const params = connectionParams();
       const ws = new WebSocket(websocketUrl());
+      activeSocket = ws;
+      setConnectionState(false, "Conectando…");
+      authError.style.display = "none";
 
-      ws.addEventListener("open", () => setConnectionState(true));
+      ws.addEventListener("open", () => {
+        setConnectionState(false, "Autenticando…");
+        ws.send(JSON.stringify({
+          type: "auth",
+          room: params.room,
+          token: params.token,
+          language: params.language
+        }));
+      });
 
       ws.addEventListener("message", event => {
         try {
-          renderCaption(JSON.parse(event.data));
+          const data = JSON.parse(event.data);
+
+          if (data.type === "error") {
+            showError(data.message || "Acesso negado.");
+            setConnectionState(false, "Acesso negado");
+            return;
+          }
+
+          if (data.type === "welcome") {
+            roomLabel.textContent = "Sala: " + (data.room_name || data.room || "—");
+            session.textContent = "Sessão: " + (data.session_id || "—");
+            configureLanguages(data.allowed_languages, data.language);
+            caption.textContent = "Aguardando legenda…";
+            setConnectionState(true);
+            return;
+          }
+
+          if (data.type === "language_changed") {
+            languageSelect.value = data.language;
+            return;
+          }
+
+          renderCaption(data);
         } catch (error) {
           console.error("Evento inválido:", error);
         }
       });
 
       ws.addEventListener("close", () => {
-        setConnectionState(false);
-        retryTimer = setTimeout(connect, 2000);
+        if (activeSocket === ws) {
+          setConnectionState(false);
+          retryTimer = setTimeout(connect, 2000);
+        }
       });
 
       ws.addEventListener("error", () => ws.close());
     }
+
+    languageSelect.addEventListener("change", () => {
+      if (activeSocket && activeSocket.readyState === WebSocket.OPEN) {
+        activeSocket.send(JSON.stringify({
+          type: "set_language",
+          language: languageSelect.value
+        }));
+      }
+    });
 
     document.querySelector("#larger").addEventListener("click", () => {
       fontScale = Math.min(1.8, fontScale + .1);

@@ -29,6 +29,7 @@ jobs:
             if (-not $candidates) { throw "lazbuild.exe não encontrado" }
             $dir = Split-Path $candidates.FullName -Parent
             $dir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+            $env:PATH = "$dir;$env:PATH"
           }
           lazbuild --version
 

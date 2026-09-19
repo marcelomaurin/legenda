@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Legenda v2 — Orquestrador</title>
+  <style>
+    :root { color-scheme: light dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: Canvas;
+      color: CanvasText;
+    }
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      padding: 1rem 1.25rem;
+      background: Canvas;
+      border-bottom: 1px solid color-mix(in srgb, CanvasText 18%, transparent);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    main {
+      width: min(1500px, 96vw);
+      margin: 1.25rem auto 3rem;
+    }
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: .5rem;
+      font-weight: 700;
+    }
+    .dot {
+      width: .8rem;
+      height: .8rem;
+      border-radius: 50%;
+      background: #777;
+    }
+    .online .dot { background: #1a9b4b; }
+    .offline .dot { background: #c53333; }
+    .toolbar {
+      display: flex;
+      gap: .5rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    input, button {
+      font: inherit;
+      padding: .55rem .75rem;
+    }
+    button { cursor: pointer; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 1rem;
+    }
+    .card {
+      border: 1px solid color-mix(in srgb, CanvasText 18%, transparent);
+      border-radius: .8rem;
+      padding: 1rem;
+      background: color-mix(in srgb, Canvas 96%, CanvasText 4%);
+    }
+    .card h2 {
+      margin: 0 0 .4rem;
+      font-size: 1.2rem;
+    }
+    .badge {
+      display: inline-block;
+      padding: .2rem .55rem;
+      border-radius: 999px;
+      font-size: .85rem;
+      border: 1px solid currentColor;
+      opacity: .85;
+    }
+    .rows {
+      display: grid;
+      grid-template-columns: minmax(120px, 1fr) 2fr;
+      gap: .35rem .8rem;
+      margin: .8rem 0;
+    }
+    .muted { opacity: .7; }
+    .actions {
+      display: flex;
+      gap: .5rem;
+      flex-wrap: wrap;
+      margin-top: .8rem;
+    }
+    #error {
+      display: none;
+      margin-bottom: 1rem;
+      padding: .8rem 1rem;
+      border: 1px solid currentColor;
+      border-radius: .6rem;
+    }
+  </style>
+</head>
+<body>
+<header>
+  <div>
+    <strong>Legenda v2 — Orquestrador</strong>
+    <div class="muted">Gestão central de salas</div>
+  </div>
+  <div class="toolbar">
+    <label>API
+      <input id="apiUrl" value="http://127.0.0.1:8070">
+    </label>
+    <button id="refresh" type="button">Atualizar</button>
+    <div id="status" class="status offline">
+      <span class="dot"></span>
+      <span id="statusText">Desconectado</span>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div id="error" role="alert"></div>
+  <section id="instances" class="grid"></section>
+</main>
+
+<script>
+  const $ = s => document.querySelector(s);
+  const hash = new URLSearchParams(location.hash.replace(/^#/, ""));
+  const initialApi = new URLSearchParams(location.search).get("api");
+  if (initialApi) $("#apiUrl").value = initialApi;
+
+  const token = hash.get("token") || "";
+  let timer = null;
+
+  function headers() {
+    const h = {"Content-Type": "application/json"};
+    if (token) h.Authorization = "Bearer " + token;
+    return h;
+  }
+
+  function setStatus(ok, text) {
+    $("#status").className = "status " + (ok ? "online" : "offline");
+    $("#statusText").textContent = text || (ok ? "Online" : "Desconectado");
+  }
+
+  function showError(message) {
+    $("#error").textContent = message;
+    $("#error").style.display = "block";
+  }
+
+  function clearError() {
+    $("#error").style.display = "none";
+  }
+
+  function apiBase() {
+    return $("#apiUrl").value.replace(/\/$/, "");
+  }
+
+  async function callApi(path, options = {}) {
+    const response = await fetch(apiBase() + path, {
+      ...options,
+      headers: {...headers(), ...(options.headers || {})},
+      cache: "no-store"
+    });
+    if (!response.ok) {
+      let message = response.statusText;
+      try {
+        const data = await response.json();
+        message = data.message || data.error || message;
+      } catch {}
+      throw new Error(message);
+    }
+    return response.json();
+  }
+
+  async function action(name, action) {
+    try {
+      clearError();
+      setStatus(false, action + "…");
+      await callApi(`/api/${action}/${encodeURIComponent(name)}`, {method: "POST"});
+      await refresh();
+    } catch (error) {
+      showError(error.message);
+      setStatus(false, "Erro");
+    }
+  }
+
+  function value(v) {
+    return v == null || v === "" ? "—" : String(v);
+  }
+
+  function render(data) {
+    const root = $("#instances");
+    root.replaceChildren();
+
+    for (const item of data.instances || []) {
+      const card = document.createElement("article");
+      card.className = "card";
+
+      const stateText = item.running
+        ? "ativa"
+        : (item.desired_running ? "falha/reiniciando" : "parada");
+
+      card.innerHTML = `
+        <h2>${item.room_name || item.name}</h2>
+        <span class="badge">${stateText}</span>
+        <div class="rows">
+          <div>Instância</div><div>${value(item.name)}</div>
+          <div>Sala</div><div>${value(item.room)}</div>
+          <div>PID</div><div>${value(item.pid)}</div>
+          <div>TCP</div><div>${value(item.tcp_port)}</div>
+          <div>WebSocket</div><div>${value(item.websocket_port)}</div>
+          <div>Microfone</div><div>${value(item.input_device_index)}</div>
+          <div>Engine</div><div>${value(item.engine)}</div>
+          <div>Modelo</div><div>${value(item.model)}</div>
+          <div>Exit code</div><div>${value(item.returncode)}</div>
+        </div>
+      `;
+
+      const actions = document.createElement("div");
+      actions.className = "actions";
+
+      const start = document.createElement("button");
+      start.textContent = "Iniciar";
+      start.disabled = item.running;
+      start.onclick = () => action(item.name, "start");
+
+      const stop = document.createElement("button");
+      stop.textContent = "Parar";
+      stop.disabled = !item.running;
+      stop.onclick = () => action(item.name, "stop");
+
+      const restart = document.createElement("button");
+      restart.textContent = "Reiniciar";
+      restart.disabled = !item.running;
+      restart.onclick = () => action(item.name, "restart");
+
+      actions.append(start, stop, restart);
+      card.appendChild(actions);
+      root.appendChild(card);
+    }
+  }
+
+  async function refresh() {
+    try {
+      clearError();
+      const data = await callApi("/api/status");
+      render(data);
+      setStatus(true, "Online");
+    } catch (error) {
+      setStatus(false, "Erro");
+      showError(error.message);
+    }
+  }
+
+  $("#refresh").addEventListener("click", refresh);
+  $("#apiUrl").addEventListener("change", refresh);
+
+  refresh();
+  timer = setInterval(refresh, 3000);
+</script>
+</body>
+</html>

@@ -337,3 +337,46 @@ como serviço sem depender do diretório corrente.
 
 O supervisor reinicia processos que terminem inesperadamente e mantém portas,
 dispositivos, diretórios de transcrição e identificadores de sala isolados.
+
+
+## Corpus de referência
+
+O corpus separa texto de referência e áudio bruto.
+
+```text
+corpus/references/*.jsonl
+          |
+          +-- id
+          +-- category
+          +-- reference
+          +-- speaker pseudônimo
+          |
+          v
+prepare_corpus_manifest.py
+          |
+          +---- procura WAV correspondente
+          |
+          v
+corpus/manifest.jsonl
+          |
+          v
+benchmark_stt.py
+          |
+          +-- resultado global
+          +-- resultado por categoria
+```
+
+Os áudios são deliberadamente excluídos do Git. Isso evita crescimento excessivo
+do repositório e reduz risco de publicação acidental de gravações.
+
+O benchmark preserva a categoria em cada `BenchmarkRow` e calcula, para cada
+grupo:
+
+- número de amostras;
+- WER médio;
+- latência média;
+- P95;
+- RTF médio.
+
+Com isso, a seleção do motor/modelo pode considerar o perfil de erro do domínio,
+e não apenas um único número agregado.

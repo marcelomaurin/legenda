@@ -15,6 +15,7 @@
   "translation_api_key": "",
   "translation_timeout_seconds": 8,
   "translate_partials": false,
+  "telemetry_interval_seconds": 2,
 
   "language": "pt-BR",
   "stt_engine": "faster-whisper",

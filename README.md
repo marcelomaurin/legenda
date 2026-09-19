@@ -1339,3 +1339,129 @@ fica fora do Git.
 
 Para redes maiores, recomenda-se comunicação entre os nós por VPN ou HTTPS,
 evitando expor os control planes diretamente na rede pública.
+
+
+## Release automatizado para Windows
+
+O workflow:
+
+```text
+.github/workflows/windows-release.yml
+```
+
+gera um pacote Windows portátil contendo:
+
+- runtime Python embutido;
+- dependências instaladas dentro do próprio pacote;
+- servidor STT;
+- orquestrador;
+- fleet server;
+- páginas web;
+- corpus textual;
+- arquivos de configuração de exemplo;
+- scripts de instalação/desinstalação;
+- documentação;
+- `VERSION.json`.
+
+O pacote não depende de Python previamente instalado no computador de destino.
+
+### Build local do pacote
+
+Em uma máquina Windows com PowerShell e Python disponíveis para preparar o build:
+
+```powershell
+.\deploy\build_windows_portable.ps1 -Version "2.0.0-rc1"
+```
+
+A saída é:
+
+```text
+dist/
+├── Legenda-2.0.0-rc1-win64.zip
+└── Legenda-2.0.0-rc1-win64.zip.sha256
+```
+
+O ZIP contém seu próprio:
+
+```text
+python\python.exe
+python\Lib\site-packages\...
+```
+
+### GitHub Actions
+
+O workflow pode ser executado manualmente por `workflow_dispatch`.
+
+Também é executado automaticamente quando uma tag no formato `v*` é criada.
+
+Exemplo:
+
+```bash
+git tag v2.0.0-rc1
+git push origin v2.0.0-rc1
+```
+
+Nesse caso, o GitHub Actions:
+
+1. executa os testes leves;
+2. monta o runtime Windows portátil;
+3. instala as dependências dentro do pacote;
+4. valida o runtime empacotado;
+5. gera ZIP;
+6. calcula SHA256;
+7. publica o artefato;
+8. cria um GitHub Release para a tag.
+
+### Instalação do pacote portátil
+
+Depois de extrair o ZIP:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\deploy\install_portable_windows.ps1 -AppDir "C:\Legenda"
+```
+
+Esse instalador usa o Python que acompanha o pacote:
+
+```text
+C:\Legenda\python\python.exe
+```
+
+e registra o orquestrador para iniciar no boot pelo Task Scheduler.
+
+Durante atualização, preserva quando existentes:
+
+```text
+config.json
+instances.json
+nodes.json
+```
+
+Assim uma atualização de versão não substitui os parâmetros locais, tokens e
+mapeamento de dispositivos.
+
+Para remover a inicialização automática preservando os dados:
+
+```powershell
+.\deploy\uninstall_portable_windows.ps1
+```
+
+Para remover também o diretório da aplicação:
+
+```powershell
+.\deploy\uninstall_portable_windows.ps1 -RemoveData
+```
+
+### Verificação de integridade
+
+Cada release inclui:
+
+```text
+Legenda-<versao>-win64.zip.sha256
+```
+
+O hash pode ser conferido no PowerShell:
+
+```powershell
+Get-FileHash .\Legenda-2.0.0-rc1-win64.zip -Algorithm SHA256
+```

@@ -210,3 +210,44 @@ captura física, VAD e STT permanecem isolados. Múltiplas salas simultâneas po
 ser executadas como processos separados com dispositivos e portas próprios.
 
 Essa separação simplifica falhas, observabilidade e dimensionamento horizontal.
+
+
+## Telemetria administrativa
+
+A classe `Telemetry` mantém apenas métricas agregadas e uma janela limitada das
+últimas latências STT. Ela não armazena conteúdo das falas.
+
+```text
+STT / filas / clientes / tradução
+             |
+             v
+         Telemetry
+             |
+             v
+      snapshot periódico
+             |
+             v
+ WebSocket admin autenticado
+             |
+             v
+       web/admin.html
+```
+
+O canal de administração reutiliza a conexão WebSocket já existente. Depois do
+`welcome`, somente clientes autenticados com `role=admin` podem enviar
+`subscribe_telemetry`.
+
+O snapshot inclui:
+
+- uptime;
+- engine STT;
+- filas;
+- contagem de eventos;
+- erros;
+- clientes TCP/WebSocket;
+- distribuição por idioma/papel;
+- média e P95 de latência;
+- CPU/memória do processo quando `psutil` estiver disponível.
+
+Essa abordagem mantém observabilidade separada do fluxo de legenda e evita
+expor métricas administrativas a espectadores comuns.

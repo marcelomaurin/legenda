@@ -1,0 +1,17 @@
+[Unit]
+Description=Legenda v2 multi-room orchestrator
+After=network-online.target sound.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/legenda
+ExecStart=/opt/legenda/.venv/bin/python /opt/legenda/bin/orchestrator.py /opt/legenda/instances.json
+Restart=on-failure
+RestartSec=3
+User=legenda
+Group=audio
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

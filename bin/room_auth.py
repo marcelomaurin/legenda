@@ -27,7 +27,7 @@ class RoomClaims:
     exp: int
 
     def expired(self) -> bool:
-        return self.exp < int(time.time())
+        return self.exp <= int(time.time())
 
 
 class RoomTokenManager:

@@ -26,10 +26,18 @@ class Orchestrator:
     def __init__(self, definition_path: Path) -> None:
         self.definition_path = definition_path
         data = json.loads(definition_path.read_text(encoding="utf-8"))
-        self.base_config = Path(data.get("base_config", "config.json"))
+        definition_dir = definition_path.parent.resolve()
+
+        base_config = Path(data.get("base_config", "config.json"))
+        if not base_config.is_absolute():
+            base_config = definition_dir / base_config
+        self.base_config = base_config
+
         self.instances: list[ManagedInstance] = []
 
         runtime_dir = Path(data.get("runtime_dir", ".runtime/instances"))
+        if not runtime_dir.is_absolute():
+            runtime_dir = definition_dir / runtime_dir
         runtime_dir.mkdir(parents=True, exist_ok=True)
         self.runtime_dir = runtime_dir
 

@@ -24,5 +24,8 @@
         "transcript_dir": "transcripts/auditorio"
       }
     }
-  ]
+  ],
+  "control_host": "127.0.0.1",
+  "control_port": 8070,
+  "control_token": "TROQUE-ESTE-TOKEN-DE-CONTROLE"
 }

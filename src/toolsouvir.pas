@@ -6,14 +6,13 @@ interface
 
 uses
   Classes, SysUtils, Forms, Controls, Graphics, Dialogs, StdCtrls, ExtCtrls,
-  AdvLed, lNetComponents, lNet, fpjson, jsonparser, rotulo, texto;
+  lNetComponents, lNet, fpjson, jsonparser, rotulo, texto;
 
 type
 
   { TfrmToolsOuvir }
 
   TfrmToolsOuvir = class(TForm)
-    AdvLed1: TAdvLed;
     btConect: TButton;
     btDisconect: TButton;
     edIP: TEdit;
@@ -24,6 +23,7 @@ type
     Label3: TLabel;
     LTCPComponent1: TLTCPComponent;
     Shape1: TShape;
+    ShapeStatus: TShape;
     procedure btConectClick(Sender: TObject);
     procedure btDisconectClick(Sender: TObject);
     procedure LTCPComponent1Accept(aSocket: TLSocket);
@@ -71,14 +71,12 @@ end;
 
 procedure TfrmToolsOuvir.LTCPComponent1Connect(aSocket: TLSocket);
 begin
-  AdvLed1.Blink := False;
-  AdvLed1.State := lsOn;
+  ShapeStatus.Brush.Color := clLime;
 end;
 
 procedure TfrmToolsOuvir.LTCPComponent1Disconnect(aSocket: TLSocket);
 begin
-  AdvLed1.Blink := False;
-  AdvLed1.State := lsOff;
+  ShapeStatus.Brush.Color := clRed;
 end;
 
 function TfrmToolsOuvir.ExtractCaptionText(const ALine: string): string;

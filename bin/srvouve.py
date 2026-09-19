@@ -1,109 +1,272 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
+"""Servidor Legenda v2.
 
-import speech_recognition as sr
+Captura áudio, reconhece fala e distribui eventos de legenda em JSON Lines.
+O formato de evento foi desenhado para suportar futuramente transcrição
+incremental, VAD, diarização, tradução e outros motores STT.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
 import socket
 import threading
-from queue import Queue
+import uuid
+from dataclasses import asdict, dataclass
+from datetime import datetime
+from pathlib import Path
+from queue import Empty, Full, Queue
+from typing import Any
 
-# Variáveis globais 
-r = sr.Recognizer()
-clients = []  # Lista para manter os clientes conectados
+import speech_recognition as sr
 
-# Fila para o último texto dito
-last_said = Queue(maxsize=10)
 
-def broadcast_message(message: str):
-    # Faz uma cópia da lista para evitar problema ao remover enquanto itera
-    for client in clients[:]:
+DEFAULT_CONFIG: dict[str, Any] = {
+    "host": "0.0.0.0",
+    "port": 8097,
+    "language": "pt-BR",
+    "phrase_time_limit": 5,
+    "ambient_noise_duration": 1.0,
+    "pause_threshold": 0.8,
+    "queue_size": 100,
+    "listen_backlog": 16,
+    "save_transcript": True,
+    "transcript_dir": "transcripts",
+}
+
+
+@dataclass(slots=True)
+class CaptionEvent:
+    version: int
+    type: str
+    session_id: str
+    sequence: int
+    timestamp: str
+    language: str
+    text: str
+    final: bool = True
+
+    def to_json_line(self) -> bytes:
+        return (json.dumps(asdict(self), ensure_ascii=False) + "\n").encode("utf-8")
+
+
+class CaptionServer:
+    def __init__(self, config: dict[str, Any]) -> None:
+        self.config = config
+        self.recognizer = sr.Recognizer()
+        self.clients: set[socket.socket] = set()
+        self.clients_lock = threading.Lock()
+        self.events: Queue[CaptionEvent] = Queue(maxsize=int(config["queue_size"]))
+        self.stop_event = threading.Event()
+        self.server_socket: socket.socket | None = None
+        self.session_id = datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:8]
+        self.sequence = 0
+        self.sequence_lock = threading.Lock()
+
+        transcript_dir = Path(str(config["transcript_dir"]))
+        transcript_dir.mkdir(parents=True, exist_ok=True)
+        self.transcript_file = transcript_dir / f"{self.session_id}.jsonl"
+
+    def next_sequence(self) -> int:
+        with self.sequence_lock:
+            self.sequence += 1
+            return self.sequence
+
+    def make_event(self, text: str, event_type: str = "caption", final: bool = True) -> CaptionEvent:
+        return CaptionEvent(
+            version=2,
+            type=event_type,
+            session_id=self.session_id,
+            sequence=self.next_sequence(),
+            timestamp=datetime.now().astimezone().isoformat(timespec="milliseconds"),
+            language=str(self.config["language"]),
+            text=text,
+            final=final,
+        )
+
+    def enqueue(self, event: CaptionEvent) -> None:
         try:
-            client.send(message.encode('utf-8'))
-        except:
+            self.events.put_nowait(event)
+        except Full:
             try:
-                client.close()
-            except:
+                self.events.get_nowait()
+                self.events.task_done()
+            except Empty:
                 pass
-            clients.remove(client)
+            self.events.put_nowait(event)
+            logging.warning("Fila cheia: evento mais antigo descartado.")
 
-def sender_thread():
-    """Thread responsável por ler da fila e enviar para todos os clientes."""
-    while True:
-        message = last_said.get(block=True)  # Espera até ter algo na fila
-        broadcast_message(message)
+    def add_client(self, client: socket.socket) -> None:
+        with self.clients_lock:
+            self.clients.add(client)
 
-def client_handler(client_socket):
-    """Aqui você pode tratar mensagens vindas do cliente, se quiser.
-       No momento, ele não recebe nada do cliente, então pode ficar vazio
-       ou apenas manter a conexão aberta.
-    """
-    try:
-        while True:
-            data = client_socket.recv(1024)
-            if not data:
-                break  # cliente desconectou
-            # Se quiser tratar comandos do cliente, faz aqui
-    except:
-        pass
-    finally:
-        if client_socket in clients:
-            clients.remove(client_socket)
-        client_socket.close()
-        print("Cliente desconectado")
+    def remove_client(self, client: socket.socket) -> None:
+        with self.clients_lock:
+            self.clients.discard(client)
+        try:
+            client.close()
+        except OSError:
+            pass
 
-def accept_connections(server):
-    while True:
-        client_sock, addr = server.accept()
-        print(f"Conexão aceita de {addr}")
-        clients.append(client_sock)
-        client_thread = threading.Thread(target=client_handler, args=(client_sock,))
-        client_thread.daemon = True
-        client_thread.start()
+    def snapshot_clients(self) -> list[socket.socket]:
+        with self.clients_lock:
+            return list(self.clients)
 
-def setup():
-    # Configuração do servidor
-    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    server.bind(('0.0.0.0', 8097))
-    server.listen(5)
-    print("Servidor escutando na porta 8097")
-
-    # Thread que aceita conexões
-    accept_thread = threading.Thread(target=accept_connections, args=(server,))
-    accept_thread.daemon = True
-    accept_thread.start()
-
-    # Thread que consome a fila e envia aos clientes
-    sender = threading.Thread(target=sender_thread)
-    sender.daemon = True
-    sender.start()
-
-def loop():
-    with sr.Microphone() as source:
-        # Ajuste para o ruído de fundo fora do loop para não repetir a cada iteração
-        print("Ajuste do ruído de fundo. Aguarde...")
-        r.adjust_for_ambient_noise(source, duration=1)
-        r.pause_threshold = 0.8  # corrigido o nome (tava pause_threashold)
-
-        while True:
-            print("Fale algo:")
-            audio = r.listen(source, phrase_time_limit=5)
+    def broadcast(self, event: CaptionEvent) -> None:
+        payload = event.to_json_line()
+        for client in self.snapshot_clients():
             try:
-                print("Iniciou análise")
-                text = r.recognize_google(audio, language='pt-BR')
-                print("Você disse: " + text)
+                client.sendall(payload)
+            except OSError:
+                self.remove_client(client)
 
-                # Mantém só os últimos 10 textos
-                if last_said.full():
-                    last_said.get_nowait()
+    def save_event(self, event: CaptionEvent) -> None:
+        if not self.config.get("save_transcript", True):
+            return
+        with self.transcript_file.open("a", encoding="utf-8") as output:
+            output.write(json.dumps(asdict(event), ensure_ascii=False) + "\n")
 
-                # Agora, **não** manda mais direto pro socket.
-                # Só coloca na fila pra sender_thread cuidar.
-                last_said.put(text)
+    def sender_loop(self) -> None:
+        while not self.stop_event.is_set():
+            try:
+                event = self.events.get(timeout=0.5)
+            except Empty:
+                continue
 
-            except sr.UnknownValueError:
-                print("Não consegui entender o áudio")
-            except sr.RequestError as e:
-                print(f"Erro ao solicitar resultados da API; {e}")
+            try:
+                self.broadcast(event)
+                if event.final:
+                    self.save_event(event)
+            finally:
+                self.events.task_done()
+
+    def client_loop(self, client: socket.socket, address: tuple[str, int]) -> None:
+        logging.info("Cliente conectado: %s:%s", *address)
+        client.settimeout(1.0)
+        try:
+            while not self.stop_event.is_set():
+                try:
+                    data = client.recv(1024)
+                    if not data:
+                        break
+                    # Reservado para futuros comandos do cliente.
+                except socket.timeout:
+                    continue
+                except OSError:
+                    break
+        finally:
+            self.remove_client(client)
+            logging.info("Cliente desconectado: %s:%s", *address)
+
+    def accept_loop(self) -> None:
+        assert self.server_socket is not None
+        while not self.stop_event.is_set():
+            try:
+                client, address = self.server_socket.accept()
+            except OSError:
+                if self.stop_event.is_set():
+                    break
+                raise
+
+            client.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+            self.add_client(client)
+            threading.Thread(
+                target=self.client_loop,
+                args=(client, address),
+                daemon=True,
+                name=f"client-{address[0]}-{address[1]}",
+            ).start()
+
+    def start_network(self) -> None:
+        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.server_socket.bind((str(self.config["host"]), int(self.config["port"])))
+        self.server_socket.listen(int(self.config["listen_backlog"]))
+
+        threading.Thread(target=self.accept_loop, daemon=True, name="accept").start()
+        threading.Thread(target=self.sender_loop, daemon=True, name="sender").start()
+
+        logging.info(
+            "Legenda v2 escutando em %s:%s | sessão %s",
+            self.config["host"],
+            self.config["port"],
+            self.session_id,
+        )
+
+    def listen_forever(self) -> None:
+        self.recognizer.pause_threshold = float(self.config["pause_threshold"])
+
+        with sr.Microphone() as source:
+            logging.info("Ajustando ruído ambiente...")
+            self.recognizer.adjust_for_ambient_noise(
+                source,
+                duration=float(self.config["ambient_noise_duration"]),
+            )
+            logging.info("Reconhecimento ativo (%s).", self.config["language"])
+
+            while not self.stop_event.is_set():
+                try:
+                    audio = self.recognizer.listen(
+                        source,
+                        phrase_time_limit=float(self.config["phrase_time_limit"]),
+                    )
+                    text = self.recognizer.recognize_google(
+                        audio,
+                        language=str(self.config["language"]),
+                    )
+                    text = text.strip()
+                    if text:
+                        logging.info("Legenda: %s", text)
+                        self.enqueue(self.make_event(text))
+                except sr.UnknownValueError:
+                    logging.debug("Áudio não compreendido.")
+                except sr.RequestError as exc:
+                    logging.error("Falha no serviço de reconhecimento: %s", exc)
+                except OSError as exc:
+                    logging.error("Falha de áudio: %s", exc)
+
+    def stop(self) -> None:
+        self.stop_event.set()
+
+        if self.server_socket is not None:
+            try:
+                self.server_socket.close()
+            except OSError:
+                pass
+
+        for client in self.snapshot_clients():
+            self.remove_client(client)
+
+
+def load_config(path: str = "config.json") -> dict[str, Any]:
+    config = DEFAULT_CONFIG.copy()
+    config_path = Path(path)
+
+    if config_path.exists():
+        with config_path.open("r", encoding="utf-8") as source:
+            user_config = json.load(source)
+        config.update(user_config)
+
+    return config
+
+
+def main() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s | %(levelname)s | %(message)s",
+    )
+
+    server = CaptionServer(load_config())
+    server.start_network()
+
+    try:
+        server.listen_forever()
+    except KeyboardInterrupt:
+        logging.info("Encerramento solicitado.")
+    finally:
+        server.stop()
+
 
 if __name__ == "__main__":
-    setup()
-    loop()
+    main()

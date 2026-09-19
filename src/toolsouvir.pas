@@ -85,13 +85,15 @@ function TfrmToolsOuvir.ExtractCaptionText(const ALine: string): string;
 var
   Data: TJSONData;
   Obj: TJSONObject;
+  Trimmed: string;
 begin
   Result := '';
-  if Trim(ALine) = '' then
+  Trimmed := TrimLeft(ALine);
+  if Trimmed = '' then
     Exit;
 
   { Compatibilidade: servidores antigos ainda podem enviar texto puro. }
-  if TrimLeft(ALine)[1] <> '{' then
+  if Trimmed[1] <> '{' then
   begin
     Result := Trim(ALine);
     Exit;

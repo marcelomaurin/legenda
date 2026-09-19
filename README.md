@@ -941,3 +941,124 @@ no corpus seja autorizada.
 
 Um corpus inicial razoável é de aproximadamente 20 frases por categoria e pelo
 menos 3 locutores, crescendo posteriormente sem alterar os critérios de coleta.
+
+
+## Gestão central do orquestrador
+
+O orquestrador agora expõe uma API HTTP de controle:
+
+```text
+GET  /api/health
+GET  /api/status
+POST /api/start/<instancia>
+POST /api/stop/<instancia>
+POST /api/restart/<instancia>
+```
+
+A configuração fica em `instances.json`:
+
+```json
+{
+  "control_host": "127.0.0.1",
+  "control_port": 8070,
+  "control_token": "TOKEN-DE-CONTROLE"
+}
+```
+
+Quando `control_token` está preenchido, as chamadas exigem:
+
+```text
+Authorization: Bearer TOKEN-DE-CONTROLE
+```
+
+Por segurança, o exemplo usa `127.0.0.1`. Para administração remota, prefira
+publicar essa API atrás de um proxy HTTPS/VPN em vez de expor diretamente a
+porta de controle.
+
+O painel central está em:
+
+```text
+web/orchestrator.html
+```
+
+Exemplo:
+
+```text
+http://SERVIDOR:8080/orchestrator.html?api=http://127.0.0.1:8070#token=TOKEN
+```
+
+O token permanece no fragmento da URL.
+
+O painel mostra, para cada instância:
+
+- nome;
+- sala;
+- estado atual;
+- estado desejado;
+- PID;
+- exit code;
+- porta TCP;
+- porta WebSocket;
+- dispositivo de áudio;
+- engine;
+- modelo.
+
+Também permite:
+
+- iniciar;
+- parar;
+- reiniciar.
+
+Uma parada administrativa altera `desired_running=false`, portanto o watchdog
+não religa a instância. Se um processo marcado para execução encerrar sozinho,
+o supervisor continua reiniciando-o automaticamente.
+
+## Serviço systemd
+
+Foram adicionados:
+
+```text
+deploy/legenda-orchestrator.service
+deploy/install_systemd.sh
+```
+
+A instalação pressupõe uma cópia do projeto em `/opt/legenda` com ambiente
+virtual já criado.
+
+Exemplo:
+
+```bash
+sudo mkdir -p /opt/legenda
+# copie/clone o projeto para /opt/legenda
+
+cd /opt/legenda
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+
+cp config.example.json config.json
+cp instances.example.json instances.json
+
+chmod +x deploy/install_systemd.sh
+sudo deploy/install_systemd.sh /opt/legenda
+```
+
+O instalador:
+
+- cria o usuário de serviço `legenda` se necessário;
+- adiciona o usuário ao grupo `audio`;
+- ajusta o diretório da aplicação;
+- instala o unit file;
+- executa `systemctl daemon-reload`;
+- habilita o serviço no boot;
+- reinicia o orquestrador.
+
+Comandos úteis:
+
+```bash
+sudo systemctl status legenda-orchestrator
+sudo systemctl restart legenda-orchestrator
+sudo journalctl -u legenda-orchestrator -f
+```
+
+O arquivo real `instances.json` é ignorado pelo Git porque pode conter token de
+controle e configuração específica de hardware.

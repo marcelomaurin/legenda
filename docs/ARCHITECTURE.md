@@ -7,7 +7,7 @@ transcrição em tempo real. A primeira etapa mantém o reconhecimento Google j�
 existente, mas desacopla transporte, evento e apresentação para permitir novos
 motores de STT, VAD, transcrição incremental, diarização, tradução e clientes web.
 
-## Fluxo atual da v2
+## Fluxo implementado
 
 ```text
 Microfone
@@ -18,16 +18,17 @@ CaptionEvent
    |
 fila thread-safe
    |
-JSON Lines / TCP :8097
+   +---------------- TCP/JSONL :8097 ----------------> Lazarus
    |
-cliente Lazarus
-   +--> janela de legenda
-   +--> histórico
+   +---------------- WebSocket :8098 ----------------> navegador
+   |
+   +---------------- JSONL --------------------------> transcripts/
 ```
 
 ## Protocolo CaptionEvent v2
 
-Cada mensagem ocupa uma linha UTF-8 terminada em `\n`.
+No TCP, cada mensagem ocupa uma linha UTF-8 terminada em `\n`.
+No WebSocket, cada frame contém um objeto JSON.
 
 ```json
 {
@@ -42,31 +43,40 @@ Cada mensagem ocupa uma linha UTF-8 terminada em `\n`.
 }
 ```
 
-O uso de JSON Lines resolve a falta de enquadramento do TCP original e permite
-evoluir o protocolo sem depender da interface gráfica.
+## Cliente Lazarus
 
-## Compatibilidade
+O desktop utiliza TCP 8097 e aceita o protocolo JSON v2, mantendo fallback
+temporário para texto puro. A antiga segunda conexão TCP e o acoplamento com o
+projeto Doctor foram removidos.
 
-O cliente Lazarus aceita eventos JSON v2 e mantém fallback para texto puro,
-permitindo conectar temporariamente a servidores antigos.
+## Cliente web
 
-A segunda conexão TCP na porta 8098 foi retirada. Ela era legado de outro projeto
-e não fazia parte do servidor de legendas.
+`web/index.html` recebe eventos pelo WebSocket 8098 e oferece reconexão
+automática, fonte responsiva, aumento/redução da fonte, modo tela cheia,
+`aria-live`, sessão e horário.
+
+Para desenvolvimento local:
+
+```bash
+python -m http.server 8080 -d web
+```
+
+Depois abra `http://127.0.0.1:8080`.
 
 ## Persistência
 
-Eventos finais são gravados em `transcripts/<session_id>.jsonl`.
-Isso permitirá gerar TXT, SRT e WebVTT sem alterar a captura de áudio.
+Eventos finais são gravados em `transcripts/<session_id>.jsonl`. A estrutura
+permite gerar TXT, SRT e WebVTT posteriormente sem alterar a captura.
 
 ## Próximas camadas
 
 1. interface comum de motores STT;
 2. whisper.cpp/faster-whisper local;
-3. VAD para segmentação por fala;
-4. eventos `partial` e `final`;
-5. WebSocket;
-6. cliente web responsivo;
-7. exportação SRT/WebVTT;
-8. diarização de locutores;
-9. tradução simultânea;
-10. métricas de latência e WER.
+3. VAD;
+4. eventos partial/final;
+5. exportação SRT/WebVTT;
+6. salas/sessões;
+7. diarização;
+8. tradução;
+9. métricas de latência e WER;
+10. painel administrativo.

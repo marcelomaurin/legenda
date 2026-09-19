@@ -189,3 +189,71 @@ Antes de criar `v2.0.0-rc1`:
 - [ ] cliente Lazarus compilado;
 - [ ] teste prolongado concluído;
 - [ ] benchmark com corpus real arquivado.
+
+
+## 7. Compilação do cliente Lazarus
+
+O workflow:
+
+```text
+.github/workflows/lazarus-build.yml
+```
+
+instala Lazarus no runner Linux, baixa o lNet upstream, compila os pacotes:
+
+```text
+lnetbase.lpk
+lnetvisual.lpk
+```
+
+e depois executa:
+
+```bash
+lazbuild src/legenda.lpi --build-mode=Default
+```
+
+O executável Linux é publicado como artifact:
+
+```text
+legenda-lazarus-linux
+```
+
+As dependências antigas `indylaz` e `industrial` foram removidas. O indicador
+visual usa agora apenas `TShape` da LCL.
+
+## 8. Smoke test Lazarus sem microfone
+
+Inicie o servidor mock:
+
+```bash
+python bin/mock_caption_server.py --host 127.0.0.1 --port 8097 --count 5
+```
+
+Abra o cliente Lazarus e conecte em:
+
+```text
+IP: 127.0.0.1
+Porta: 8097
+```
+
+O cliente deve receber, uma por vez, frases como:
+
+```text
+Teste de conexão do Legenda.
+O protocolo JSONL está funcionando.
+O cliente Lazarus recebeu uma legenda final.
+Esta execução não utiliza microfone nem reconhecimento de voz.
+Teste concluído.
+```
+
+Esse teste valida:
+
+- conexão TCP;
+- framing JSONL;
+- parsing de CaptionEvent v2;
+- atualização da última frase;
+- atualização do rótulo;
+- atualização do histórico.
+
+O CI também executa um teste de integração de rede em loopback que recebe três
+eventos JSONL completos e valida sequência, sessão e versão do protocolo.

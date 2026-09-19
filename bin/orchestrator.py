@@ -43,6 +43,10 @@ class Orchestrator:
         self.control_port = int(data.get("control_port", 8070))
         self.control_token = str(data.get("control_token", ""))
         self.project_root = Path(__file__).resolve().parent.parent
+        self.runtime_persist_keys = tuple(
+            str(key) for key in data.get("runtime_persist_keys", ["input_device_index"])
+        )
+        self.reset_runtime_settings = bool(data.get("reset_runtime_settings", False))
 
         self.instances: list[ManagedInstance] = []
 
@@ -65,10 +69,30 @@ class Orchestrator:
 
         overrides = dict(item.get("overrides", {}))
         base.update(overrides)
-        output.write_text(
-            json.dumps(base, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+
+        if output.exists() and not self.reset_runtime_settings:
+            try:
+                previous = json.loads(output.read_text(encoding="utf-8"))
+                for key in self.runtime_persist_keys:
+                    if key in previous:
+                        base[key] = previous[key]
+            except (OSError, json.JSONDecodeError):
+                pass
+
+        temp = output.with_name(f".{output.name}.{os.getpid()}.tmp")
+        try:
+            temp.write_text(
+                json.dumps(base, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            os.replace(temp, output)
+            if os.name != "nt":
+                output.chmod(0o600)
+        finally:
+            try:
+                temp.unlink(missing_ok=True)
+            except OSError:
+                pass
 
     def get_instance(self, name: str) -> ManagedInstance | None:
         return next((instance for instance in self.instances if instance.name == name), None)

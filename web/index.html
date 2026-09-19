@@ -160,6 +160,7 @@
     let fontScale = 1;
     let retryTimer = null;
     let lastSequence = 0;
+    let reconnectEnabled = true;
 
     function websocketUrl() {
       const params = new URLSearchParams(location.search);
@@ -176,9 +177,10 @@
 
     function connectionParams() {
       const params = new URLSearchParams(location.search);
+      const hashParams = new URLSearchParams(location.hash.replace(/^#/, ""));
       return {
         room: params.get("room") || "principal",
-        token: params.get("token") || "",
+        token: hashParams.get("token") || params.get("token") || "",
         language: params.get("lang") || "pt-BR"
       };
     }
@@ -246,8 +248,10 @@
           const data = JSON.parse(event.data);
 
           if (data.type === "error") {
+            reconnectEnabled = false;
             showError(data.message || "Acesso negado.");
             setConnectionState(false, "Acesso negado");
+            ws.close();
             return;
           }
 
@@ -274,7 +278,9 @@
       ws.addEventListener("close", () => {
         if (activeSocket === ws) {
           setConnectionState(false);
-          retryTimer = setTimeout(connect, 2000);
+          if (reconnectEnabled) {
+            retryTimer = setTimeout(connect, 2000);
+          }
         }
       });
 

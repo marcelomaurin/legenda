@@ -81,11 +81,13 @@ object frmToolsOuvir: TfrmToolsOuvir
     Width = 520
     TabOrder = 4
   end
-  object AdvLed1: TAdvLed
+  object ShapeStatus: TShape
     Left = 38
     Height = 24
     Top = 34
     Width = 24
+    Brush.Color = clRed
+    Shape = stCircle
   end
   object LTCPComponent1: TLTCPComponent
     Port = 8097

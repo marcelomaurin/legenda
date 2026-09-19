@@ -251,3 +251,42 @@ O snapshot inclui:
 
 Essa abordagem mantém observabilidade separada do fluxo de legenda e evita
 expor métricas administrativas a espectadores comuns.
+
+
+## Benchmark STT
+
+O benchmark é deliberadamente separado do servidor ao vivo.
+
+```text
+dataset fixo
+   |
+   +-- áudio WAV
+   +-- referência textual
+   |
+   v
+SpeechEngine
+   |
+   v
+hipótese
+   |
+   +-- WER
+   +-- tempo de inferência
+   +-- RTF
+   +-- latência P95
+   |
+   v
+JSON + CSV
+```
+
+Isso permite comparar engines e modelos sem interferência de rede, WebSocket,
+interface gráfica ou fila de eventos.
+
+As métricas principais são:
+
+- WER para precisão;
+- RTF para capacidade de acompanhar tempo real;
+- latência média para custo típico;
+- P95 para identificar caudas de latência.
+
+O resultado por amostra preserva referência e hipótese, permitindo inspecionar
+quais termos causam mais erro e avaliar o efeito de hotwords.

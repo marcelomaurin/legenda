@@ -18,11 +18,6 @@ from pathlib import Path
 from statistics import fmean
 from typing import Any
 
-try:
-    from .stt_engines import create_engine
-except ImportError:
-    from stt_engines import create_engine
-
 
 def normalize_text(text: str) -> list[str]:
     cleaned = []
@@ -136,6 +131,11 @@ def main() -> None:
     engine_name = str(config.get("stt_engine", "google"))
     model_name = str(config.get("whisper_model", "-"))
     device_name = str(config.get("whisper_device", "-"))
+
+    try:
+        from .stt_engines import create_engine
+    except ImportError:
+        from stt_engines import create_engine
 
     engine = create_engine(config)
     manifest_path = Path(args.manifest)

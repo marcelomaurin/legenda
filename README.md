@@ -504,3 +504,175 @@ aparecem como indisponíveis.
   }
 }
 ```
+
+
+## Benchmark de reconhecimento
+
+O projeto inclui uma ferramenta para comparar engines e modelos usando o mesmo
+conjunto de áudios e transcrições de referência:
+
+```text
+bin/benchmark_stt.py
+```
+
+O manifesto é JSON Lines. Exemplo:
+
+```json
+{"id":"01","audio":"benchmark_samples/01.wav","reference":"bom dia a todos"}
+{"id":"02","audio":"benchmark_samples/02.wav","reference":"vamos iniciar a reunião"}
+```
+
+Os WAVs devem ser mono PCM 16-bit. Para faster-whisper, recomenda-se 16 kHz para
+manter o mesmo formato usado pelo servidor.
+
+### Testar um modelo
+
+```bash
+python bin/benchmark_stt.py benchmark_manifest.jsonl \
+  --engine faster-whisper \
+  --model tiny \
+  --device cpu \
+  --compute-type int8
+```
+
+Repita com outros modelos:
+
+```bash
+python bin/benchmark_stt.py benchmark_manifest.jsonl \
+  --engine faster-whisper --model base --device cpu --compute-type int8
+
+python bin/benchmark_stt.py benchmark_manifest.jsonl \
+  --engine faster-whisper --model small --device cpu --compute-type int8
+```
+
+Em CUDA:
+
+```bash
+python bin/benchmark_stt.py benchmark_manifest.jsonl \
+  --engine faster-whisper \
+  --model small \
+  --device cuda \
+  --compute-type float16
+```
+
+Cada execução produz:
+
+```text
+benchmark_results/
+├── DATA-engine-model.json
+└── DATA-engine-model.csv
+```
+
+O JSON contém:
+
+- WER médio;
+- latência média;
+- latência P95;
+- RTF médio;
+- tempo total de áudio;
+- tempo total de inferência;
+- resultado por amostra;
+- hipótese reconhecida;
+- referência utilizada.
+
+### WER
+
+O benchmark usa Word Error Rate:
+
+```text
+WER = (substituições + inserções + deleções) / palavras da referência
+```
+
+Quanto menor, melhor.
+
+Exemplo:
+
+```text
+Referência : bom dia a todos
+Hipótese   : bom dia para todos
+
+Substituições = 1
+Palavras       = 4
+
+WER = 1 / 4 = 0,25
+```
+
+### RTF
+
+RTF é o Real-Time Factor:
+
+```text
+RTF = tempo de inferência / duração do áudio
+```
+
+Interpretação:
+
+```text
+RTF < 1,0  -> processa mais rápido que o tempo real
+RTF = 1,0  -> acompanha exatamente o tempo real
+RTF > 1,0  -> não consegue acompanhar tempo real
+```
+
+Exemplo:
+
+```text
+áudio       = 10 s
+inferência  = 2 s
+RTF         = 0,20
+```
+
+### Comparar resultados
+
+Use:
+
+```text
+bin/compare_benchmarks.py
+```
+
+Exemplo:
+
+```bash
+python bin/compare_benchmarks.py \
+  benchmark_results/tiny.json \
+  benchmark_results/base.json \
+  benchmark_results/small.json
+```
+
+A saída resume:
+
+```text
+ENGINE             MODEL        DEVICE      WER    LAT(ms)      P95      RTF
+faster-whisper     tiny         cpu       0.1520      180.0    240.0   0.1200
+faster-whisper     base         cpu       0.0980      310.0    420.0   0.2100
+faster-whisper     small        cpu       0.0610      690.0    910.0   0.4600
+```
+
+Esses números são apenas um exemplo de formato, não resultados medidos do
+projeto.
+
+O comparador também gera:
+
+```text
+benchmark_results/comparison.csv
+```
+
+### Metodologia recomendada
+
+Para uma avaliação útil, utilize o mesmo conjunto de gravações em todos os
+modelos, incluindo:
+
+- fala limpa;
+- ambiente com ruído;
+- fala mais rápida;
+- diferentes locutores;
+- palavras técnicas;
+- nomes próprios;
+- siglas;
+- gravação em distância maior do microfone.
+
+Para o contexto técnico do Legenda, também é interessante criar um subconjunto
+com termos institucionais ou especializados e repetir o teste com e sem
+`hotwords`.
+
+Assim a escolha de modelo deixa de ser subjetiva e pode ser justificada por uma
+relação mensurável entre precisão e custo computacional.

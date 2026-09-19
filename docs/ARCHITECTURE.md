@@ -466,3 +466,28 @@ operacional de legendagem ao vivo.
 O endpoint só aceita IDs presentes nas referências textuais, reduzindo risco de
 criação de arquivos arbitrários. O nome de arquivo não vem diretamente do usuário:
 é derivado de `category` e `id` previamente validados.
+
+
+## Relatório de qualidade
+
+O `quality_report.py` funciona somente sobre resultados persistidos:
+
+```text
+benchmark_results/*.json
+          |
+          v
+quality_report.py
+          |
+          +-- resumo global
+          +-- comparação entre configurações
+          +-- métricas por categoria
+          |
+          v
+benchmark_results/report.html
+```
+
+Nenhuma inferência é executada durante a geração do relatório. Isso mantém a
+separação entre medição e apresentação e evita que uma visualização altere o
+resultado experimental.
+
+O relatório pode ser regenerado sempre que novos benchmarks forem adicionados.

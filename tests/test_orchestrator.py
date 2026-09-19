@@ -63,6 +63,63 @@ class OrchestratorTests(unittest.TestCase):
             orchestrator.stop(instance, disable_restart=True)
             self.assertFalse(instance.desired_running)
 
+    def test_preserves_runtime_audio_device_across_restart(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            definition = root / "instances.json"
+            definition.write_text(json.dumps({
+                "runtime_dir": ".runtime",
+                "instances": [{
+                    "name": "sala1",
+                    "overrides": {"input_device_index": 1}
+                }]
+            }), encoding="utf-8")
+
+            first = Orchestrator(definition)
+            runtime = first.instances[0].config_path
+            current = json.loads(runtime.read_text(encoding="utf-8"))
+            current["input_device_index"] = 7
+            runtime.write_text(json.dumps(current), encoding="utf-8")
+
+            second = Orchestrator(definition)
+            rebuilt = json.loads(
+                second.instances[0].config_path.read_text(encoding="utf-8")
+            )
+            self.assertEqual(rebuilt["input_device_index"], 7)
+
+    def test_can_reset_runtime_settings_from_definition(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            definition = root / "instances.json"
+            definition.write_text(json.dumps({
+                "runtime_dir": ".runtime",
+                "instances": [{
+                    "name": "sala1",
+                    "overrides": {"input_device_index": 1}
+                }]
+            }), encoding="utf-8")
+
+            first = Orchestrator(definition)
+            runtime = first.instances[0].config_path
+            current = json.loads(runtime.read_text(encoding="utf-8"))
+            current["input_device_index"] = 7
+            runtime.write_text(json.dumps(current), encoding="utf-8")
+
+            definition.write_text(json.dumps({
+                "runtime_dir": ".runtime",
+                "reset_runtime_settings": True,
+                "instances": [{
+                    "name": "sala1",
+                    "overrides": {"input_device_index": 1}
+                }]
+            }), encoding="utf-8")
+
+            second = Orchestrator(definition)
+            rebuilt = json.loads(
+                second.instances[0].config_path.read_text(encoding="utf-8")
+            )
+            self.assertEqual(rebuilt["input_device_index"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

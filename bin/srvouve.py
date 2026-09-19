@@ -20,6 +20,7 @@ from vad_capture import AudioChunk, VADAudioCapture
 from session_export import SessionWaveRecorder, SubtitleExporter
 from room_auth import RoomTokenManager
 from translation import create_translator, normalize_language
+from telemetry import Telemetry
 
 try:
     from websockets.sync.server import serve as websocket_serve
@@ -42,6 +43,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "translation_api_key": "",
     "translation_timeout_seconds": 8,
     "translate_partials": False,
+    "telemetry_interval_seconds": 2,
     "language": "pt-BR",
     "stt_engine": "faster-whisper",
     "whisper_model": "small",
@@ -131,6 +133,8 @@ class CaptionServer:
         ]
         self.translator = create_translator(config)
         self.translate_partials = bool(config.get("translate_partials", False))
+        self.telemetry_interval_seconds = max(1, int(config.get("telemetry_interval_seconds", 2)))
+        self.telemetry = Telemetry()
         self.sequence = 0
         self.sequence_lock = threading.Lock()
 
@@ -207,6 +211,7 @@ class CaptionServer:
             except Empty:
                 pass
             self.events.put_nowait(event)
+            self.telemetry.record_dropped_event()
             logging.warning("Fila de eventos cheia: evento mais antigo descartado.")
 
     def submit_audio(self, chunk: AudioChunk) -> None:
@@ -225,6 +230,7 @@ class CaptionServer:
         try:
             self.transcription_jobs.put_nowait(job)
         except Full:
+            self.telemetry.record_dropped_partial()
             logging.debug("Fila STT ocupada: atualização parcial descartada.")
 
     def transcription_loop(self) -> None:
@@ -245,6 +251,7 @@ class CaptionServer:
 
                 latency_ms = int((time.monotonic() - started) * 1000)
                 event = self.make_event(job.chunk, text, result.language, latency_ms)
+                self.telemetry.record_event(job.chunk.final, latency_ms)
                 if job.chunk.final and self.session_recorder is not None:
                     self.session_recorder.append(job.chunk.pcm, job.chunk.start_ms)
                 self.enqueue_event(event)
@@ -257,6 +264,7 @@ class CaptionServer:
                     text,
                 )
             except Exception as exc:
+                self.telemetry.record_stt_error()
                 logging.warning(
                     "Falha de transcrição (%s): %s",
                     "final" if job.chunk.final else "partial",
@@ -416,6 +424,23 @@ class CaptionServer:
                             "type": "language_changed",
                             "language": requested_language
                         }, ensure_ascii=False))
+
+                if message.get("type") == "subscribe_telemetry":
+                    if client_info.get("role") != "admin":
+                        connection.send(json.dumps({
+                            "type": "error",
+                            "code": "ADMIN_REQUIRED",
+                            "message": "Telemetria disponível apenas para administradores."
+                        }, ensure_ascii=False))
+                    else:
+                        client_info["telemetry"] = "1"
+                        connection.send(json.dumps({
+                            "type": "telemetry_subscribed",
+                            "interval_seconds": self.telemetry_interval_seconds
+                        }, ensure_ascii=False))
+
+                if message.get("type") == "unsubscribe_telemetry":
+                    client_info.pop("telemetry", None)
         except Exception as exc:
             logging.debug("WebSocket encerrado: %s", exc)
         finally:
@@ -477,6 +502,7 @@ class CaptionServer:
                     payload["text"] = translated
                     payload["translated"] = translated != event.text
                 except Exception as exc:
+                    self.telemetry.record_translation_error()
                     logging.warning(
                         "Falha ao traduzir %s -> %s: %s",
                         source_language,
@@ -490,6 +516,45 @@ class CaptionServer:
             except Exception:
                 with self.websocket_clients_lock:
                     self.websocket_clients.pop(connection, None)
+
+    def telemetry_snapshot(self) -> dict[str, Any]:
+        with self.clients_lock:
+            tcp_count = len(self.clients)
+
+        with self.websocket_clients_lock:
+            web_clients = [dict(info) for info in self.websocket_clients.values()]
+
+        return self.telemetry.snapshot(
+            session_id=self.session_id,
+            room_id=self.room_id,
+            room_name=self.room_name,
+            engine=self.engine_name,
+            event_queue_size=self.events.qsize(),
+            event_queue_capacity=self.events.maxsize,
+            stt_queue_size=self.transcription_jobs.qsize(),
+            stt_queue_capacity=self.transcription_jobs.maxsize,
+            tcp_clients=tcp_count,
+            websocket_clients=web_clients,
+        )
+
+    def telemetry_loop(self) -> None:
+        while not self.stop_event.wait(self.telemetry_interval_seconds):
+            snapshot = self.telemetry_snapshot()
+            payload = json.dumps(snapshot, ensure_ascii=False)
+
+            with self.websocket_clients_lock:
+                admins = [
+                    connection
+                    for connection, info in self.websocket_clients.items()
+                    if info.get("role") == "admin" and info.get("telemetry") == "1"
+                ]
+
+            for connection in admins:
+                try:
+                    connection.send(payload)
+                except Exception:
+                    with self.websocket_clients_lock:
+                        self.websocket_clients.pop(connection, None)
 
     # ---------- persistência / distribuição ----------
 
@@ -533,6 +598,7 @@ class CaptionServer:
         threading.Thread(target=self.accept_loop, daemon=True, name="tcp-accept").start()
         threading.Thread(target=self.sender_loop, daemon=True, name="caption-sender").start()
         threading.Thread(target=self.transcription_loop, daemon=True, name="stt-worker").start()
+        threading.Thread(target=self.telemetry_loop, daemon=True, name="telemetry").start()
 
         if self.config.get("websocket_enabled", True):
             threading.Thread(target=self.websocket_loop, daemon=True, name="websocket").start()

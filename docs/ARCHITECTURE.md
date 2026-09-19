@@ -153,3 +153,60 @@ isoladas.
 6. benchmark WER/latência;
 7. múltiplos workers STT quando o engine permitir;
 8. configuração de dispositivo de entrada pela interface.
+
+
+## Sala autenticada e distribuição por idioma
+
+O servidor mantém um `active_room` por processo. O áudio, a sessão e os eventos
+pertencem a essa sala.
+
+```text
+Convite assinado
+      |
+      v
+WebSocket
+      |
+      v
+AUTH {room, token, language}
+      |
+      +-- HMAC inválido/expirado -> rejeita
+      |
+      v
+cliente autenticado
+      |
+      +-- pt-BR -> evento original
+      +-- en    -> tradutor -> evento inglês
+      +-- es    -> tradutor -> evento espanhol
+```
+
+Os tokens usam HMAC-SHA256 e carregam `room`, `role` e `exp`. Dessa forma
+não é necessário persistir cada convite no servidor.
+
+## Tradução
+
+A interface `Translator` está em `bin/translation.py`.
+
+Implementações atuais:
+
+- `PassthroughTranslator`;
+- `LibreTranslateTranslator`;
+- `CachedTranslator`.
+
+A tradução ocorre somente para o cliente WebSocket. O evento original permanece
+imutável para auditoria, exportação e diarização.
+
+O cache usa a chave:
+
+```text
+(texto, idioma_origem, idioma_destino)
+```
+
+e evita repetir traduções idênticas durante a mesma execução.
+
+## Estratégia de salas
+
+Uma instância corresponde a uma fonte de áudio/sala ativa. Isso é deliberado:
+captura física, VAD e STT permanecem isolados. Múltiplas salas simultâneas podem
+ser executadas como processos separados com dispositivos e portas próprios.
+
+Essa separação simplifica falhas, observabilidade e dimensionamento horizontal.

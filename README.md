@@ -1140,3 +1140,59 @@ navegadores modernos geralmente exigem HTTPS para `getUserMedia`.
 
 Portanto, para coleta remota, publique a interface por HTTPS ou use um túnel/VPN
 com terminação TLS. Não exponha diretamente a API de coleta sem autenticação.
+
+
+## Relatório consolidado de qualidade
+
+Depois de executar vários benchmarks, gere um relatório HTML com:
+
+```bash
+python bin/quality_report.py \
+  --input-dir benchmark_results \
+  --output benchmark_results/report.html
+```
+
+O relatório consolida:
+
+- número de execuções;
+- WER médio entre execuções;
+- RTF médio;
+- latência média;
+- comparação global por engine/model/device;
+- WER, latência média, P95 e RTF por categoria do corpus.
+
+A tabela global é ordenada por WER e, em caso de empate aproximado, por RTF.
+
+O relatório **não cria dados**. Se não existirem JSONs de benchmark válidos,
+a página informa explicitamente que ainda não há resultados medidos.
+
+Arquivos aceitos são os JSONs gerados por:
+
+```text
+bin/benchmark_stt.py
+```
+
+Exemplo de fluxo completo:
+
+```bash
+python bin/prepare_corpus_manifest.py --corpus-dir corpus --output corpus/manifest.jsonl
+
+python bin/benchmark_stt.py corpus/manifest.jsonl \
+  --engine faster-whisper --model tiny --device cpu --compute-type int8
+
+python bin/benchmark_stt.py corpus/manifest.jsonl \
+  --engine faster-whisper --model small --device cpu --compute-type int8
+
+python bin/quality_report.py \
+  --input-dir benchmark_results \
+  --output benchmark_results/report.html
+```
+
+Abra então:
+
+```text
+benchmark_results/report.html
+```
+
+Esse relatório facilita a escolha do modelo com base em evidência do próprio
+ambiente de uso, inclusive identificando categorias em que a precisão cai.

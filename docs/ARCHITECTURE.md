@@ -2,81 +2,142 @@
 
 ## Objetivo
 
-O Legenda v2 evolui o protótipo original para uma plataforma de legendagem e
-transcrição em tempo real. A primeira etapa mantém o reconhecimento Google já
-existente, mas desacopla transporte, evento e apresentação para permitir novos
-motores de STT, VAD, transcrição incremental, diarização, tradução e clientes web.
+O Legenda v2 transforma o protótipo original em uma plataforma de legendagem
+em tempo real com captura segmentada por voz, motores STT intercambiáveis,
+eventos incrementais e múltiplos clientes.
 
-## Fluxo implementado
+## Pipeline implementado
 
 ```text
-Microfone
-   |
-SpeechRecognition
-   |
+PyAudio
+  |
+  | PCM mono 16-bit / 16 kHz
+  v
+WebRTC VAD
+  |
+  +-- início de fala
+  +-- partial snapshots
+  +-- fim de fala
+  |
+  v
+fila de transcrição
+  |
+  v
+SpeechEngine
+  |
+  +-- GoogleSpeechEngine
+  |
+  +-- FasterWhisperSpeechEngine
+         |
+         +-- Silero VAD interno opcional
+         +-- hotwords
+         +-- CPU ou CUDA
+  |
+  v
 CaptionEvent
-   |
-fila thread-safe
-   |
-   +---------------- TCP/JSONL :8097 ----------------> Lazarus
-   |
-   +---------------- WebSocket :8098 ----------------> navegador
-   |
-   +---------------- JSONL --------------------------> transcripts/
+  |
+  +-- TCP JSONL --> Lazarus / somente final
+  +-- WebSocket -> Web / partial + final
+  +-- JSONL ----> arquivo / somente final
 ```
 
-## Protocolo CaptionEvent v2
+## Por que existem dois níveis de VAD
 
-No TCP, cada mensagem ocupa uma linha UTF-8 terminada em `\n`.
-No WebSocket, cada frame contém um objeto JSON.
+O primeiro VAD trabalha diretamente na captura e decide quando uma fala começa
+e termina. Isso reduz áudio inútil e possibilita eventos parciais.
+
+Quando o motor é faster-whisper, o filtro VAD interno pode permanecer ligado como
+segunda barreira contra silêncio e ruído dentro do segmento já detectado.
+
+## SpeechEngine
+
+`bin/stt_engines.py` define a interface:
+
+```text
+transcribe_pcm(pcm, sample_rate, sample_width) -> TranscriptionResult
+```
+
+Dessa forma rede, interface e persistência não dependem do fornecedor de STT.
+
+## Captura VAD
+
+`bin/vad_capture.py` usa frames de 30 ms por padrão. A máquina de estados possui:
+
+```text
+SILÊNCIO
+   |
+   | proporção mínima de frames com voz
+   v
+FALA
+   |
+   +-- gera snapshots parciais
+   |
+   | proporção mínima de frames sem voz
+   v
+FINALIZA SEGMENTO
+```
+
+Um `max_utterance_ms` força o fechamento de falas muito longas.
+
+## Eventos incrementais
+
+Todos os snapshots da mesma fala compartilham `utterance_id`.
+
+Partial:
 
 ```json
 {
-  "version": 2,
-  "type": "caption",
-  "session_id": "20260919-114700-a1b2c3d4",
-  "sequence": 1,
-  "timestamp": "2026-09-19T11:47:02.120-03:00",
-  "language": "pt-BR",
-  "text": "Vamos iniciar a reunião.",
-  "final": true
+  "type": "partial",
+  "utterance_id": "4a72fd981211",
+  "final": false,
+  "text": "vamos iniciar a"
 }
 ```
 
-## Cliente Lazarus
+Final:
 
-O desktop utiliza TCP 8097 e aceita o protocolo JSON v2, mantendo fallback
-temporário para texto puro. A antiga segunda conexão TCP e o acoplamento com o
-projeto Doctor foram removidos.
-
-## Cliente web
-
-`web/index.html` recebe eventos pelo WebSocket 8098 e oferece reconexão
-automática, fonte responsiva, aumento/redução da fonte, modo tela cheia,
-`aria-live`, sessão e horário.
-
-Para desenvolvimento local:
-
-```bash
-python -m http.server 8080 -d web
+```json
+{
+  "type": "caption",
+  "utterance_id": "4a72fd981211",
+  "final": true,
+  "text": "Vamos iniciar a reunião."
+}
 ```
 
-Depois abra `http://127.0.0.1:8080`.
+## Métricas incorporadas ao protocolo
 
-## Persistência
+O evento contém:
 
-Eventos finais são gravados em `transcripts/<session_id>.jsonl`. A estrutura
-permite gerar TXT, SRT e WebVTT posteriormente sem alterar a captura.
+- `start_ms`;
+- `end_ms`;
+- `latency_ms`;
+- `engine`;
+- `sequence`.
 
-## Próximas camadas
+Isso permite medir latência e comparar engines posteriormente.
 
-1. interface comum de motores STT;
-2. whisper.cpp/faster-whisper local;
-3. VAD;
-4. eventos partial/final;
-5. exportação SRT/WebVTT;
-6. salas/sessões;
-7. diarização;
-8. tradução;
-9. métricas de latência e WER;
-10. painel administrativo.
+## Concorrência
+
+A captura não executa inferência diretamente. Ela coloca trabalhos numa fila
+dedicada. Isso impede que uma inferência lenta bloqueie imediatamente a leitura
+do microfone.
+
+Atualizações parciais podem ser descartadas sob pressão. Eventos finais recebem
+prioridade de enfileiramento porque representam a transcrição consolidada.
+
+## Compatibilidade
+
+O Lazarus continua no TCP 8097 e recebe apenas eventos finais. O navegador usa
+WebSocket 8098 e recebe partial/final.
+
+## Próximas extensões
+
+1. exportação SRT e WebVTT;
+2. diarização;
+3. salas e autenticação;
+4. tradução simultânea;
+5. painel de telemetria;
+6. benchmark WER/latência;
+7. múltiplos workers STT quando o engine permitir;
+8. configuração de dispositivo de entrada pela interface.

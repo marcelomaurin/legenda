@@ -339,3 +339,52 @@ A versão do Lazarus é fixada para evitar que uma atualização automática do
 pacote altere o comportamento do build sem revisão do projeto.
 
 O job possui timeout de 30 minutos para impedir bloqueio indefinido do pipeline.
+
+
+## 12. Benchmark automatizado por matriz
+
+Depois de gerar o manifesto real do corpus:
+
+```bash
+python bin/prepare_corpus_manifest.py \
+  --corpus-dir corpus \
+  --output corpus/manifest.jsonl \
+  --strict
+```
+
+execute toda a matriz:
+
+```bash
+python bin/benchmark_suite.py benchmark_suite.example.json
+```
+
+O arquivo de exemplo executa, por padrão:
+
+```text
+faster-whisper tiny  / CPU / int8
+faster-whisper base  / CPU / int8
+faster-whisper small / CPU / int8
+```
+
+e deixa uma configuração CUDA preparada, porém desabilitada.
+
+Ao final, o comando chama automaticamente:
+
+```text
+bin/quality_report.py
+```
+
+e gera:
+
+```text
+benchmark_results/report.html
+```
+
+Para continuar a matriz mesmo quando uma configuração falhar:
+
+```bash
+python bin/benchmark_suite.py benchmark_suite.example.json --continue-on-error
+```
+
+Assim o benchmark físico do corpus passa a exigir apenas gravação dos áudios e
+execução de um único comando.

@@ -676,3 +676,134 @@ com termos institucionais ou especializados e repetir o teste com e sem
 
 Assim a escolha de modelo deixa de ser subjetiva e pode ser justificada por uma
 relação mensurável entre precisão e custo computacional.
+
+
+## Dispositivos de áudio
+
+Para listar os microfones e interfaces de entrada disponíveis:
+
+```bash
+python bin/list_audio_devices.py
+```
+
+Exemplo de saída:
+
+```json
+[
+  {
+    "index": 1,
+    "name": "USB Audio Device",
+    "max_input_channels": 2,
+    "default_sample_rate": 48000,
+    "is_default": true
+  }
+]
+```
+
+O dispositivo usado pela instância é definido por:
+
+```json
+"input_device_index": 1
+```
+
+Quando o valor é `null`, o PyAudio usa o dispositivo padrão do sistema.
+
+O painel administrativo também possui a seção **Áudio**. Um administrador pode:
+
+- atualizar a lista de dispositivos;
+- visualizar o dispositivo atualmente configurado;
+- escolher outro dispositivo;
+- salvar o novo índice.
+
+A alteração é persistida no arquivo de configuração da instância. Para segurança,
+o stream ativo não é trocado durante uma sessão: o painel informa que é
+necessário reiniciar a instância.
+
+## Múltiplas salas / instâncias
+
+O arquivo de exemplo:
+
+```text
+instances.example.json
+```
+
+mostra duas salas independentes:
+
+```text
+Conselho de Saúde
+  TCP 8097
+  WebSocket 8098
+  microfone 1
+
+Auditório
+  TCP 8197
+  WebSocket 8198
+  microfone 2
+```
+
+Copie o exemplo:
+
+```bash
+cp instances.example.json instances.json
+```
+
+e inicie:
+
+```bash
+python bin/orchestrator.py instances.json
+```
+
+O orquestrador:
+
+- lê uma configuração base;
+- aplica overrides por sala;
+- gera configurações runtime separadas;
+- inicia um processo `srvouve.py` por sala;
+- define `LEGENDA_CONFIG` para cada processo;
+- monitora os processos;
+- reinicia automaticamente uma instância que encerrar inesperadamente;
+- encerra as salas de forma ordenada com Ctrl+C.
+
+Os arquivos runtime ficam, por padrão, em:
+
+```text
+.runtime/instances/
+```
+
+e não são versionados pelo Git.
+
+### Exemplo de definição
+
+```json
+{
+  "base_config": "config.json",
+  "runtime_dir": ".runtime/instances",
+  "instances": [
+    {
+      "name": "conselho",
+      "overrides": {
+        "active_room": "conselho",
+        "room_name": "Conselho de Saúde",
+        "port": 8097,
+        "websocket_port": 8098,
+        "input_device_index": 1,
+        "transcript_dir": "transcripts/conselho"
+      }
+    },
+    {
+      "name": "auditorio",
+      "overrides": {
+        "active_room": "auditorio",
+        "room_name": "Auditório",
+        "port": 8197,
+        "websocket_port": 8198,
+        "input_device_index": 2,
+        "transcript_dir": "transcripts/auditorio"
+      }
+    }
+  ]
+}
+```
+
+Essa separação permite que uma falha, saturação de fila ou troca de dispositivo
+em uma sala não interrompa as demais.

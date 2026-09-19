@@ -8,6 +8,8 @@ on:
         required: false
         default: "dev"
   push:
+    branches:
+      - "modernizacao-v2"
     tags:
       - "v*"
 

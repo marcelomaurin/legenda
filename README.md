@@ -1196,3 +1196,146 @@ benchmark_results/report.html
 
 Esse relatório facilita a escolha do modelo com base em evidência do próprio
 ambiente de uso, inclusive identificando categorias em que a precisão cai.
+
+
+## Instalação no Windows
+
+Foram adicionados:
+
+```text
+deploy/install_windows.ps1
+deploy/uninstall_windows.ps1
+```
+
+O instalador usa o Agendador de Tarefas do Windows para iniciar o orquestrador
+automaticamente no boot, sem exigir NSSM ou outro serviço externo.
+
+Exemplo:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\deploy\install_windows.ps1 -AppDir "C:\Legenda"
+```
+
+O script:
+
+- cria o ambiente virtual em `.venv`;
+- atualiza o pip;
+- instala `requirements.txt`;
+- cria `config.json` a partir do exemplo, se necessário;
+- cria `instances.json` a partir do exemplo, se necessário;
+- registra a tarefa `LegendaOrchestrator`;
+- configura execução no boot;
+- configura reinício automático da tarefa;
+- executa sob a conta `SYSTEM`;
+- inicia o orquestrador após a instalação.
+
+Para remover somente a tarefa automática:
+
+```powershell
+.\deploy\uninstall_windows.ps1
+```
+
+Os arquivos de configuração e dados não são apagados pelo desinstalador.
+
+## Gestão de múltiplos nós físicos
+
+Quando as salas estão distribuídas em computadores diferentes, cada computador
+continua executando seu próprio `orchestrator.py`.
+
+O servidor central:
+
+```text
+bin/fleet_server.py
+```
+
+consulta os control planes desses nós e apresenta uma visão consolidada.
+
+Crie:
+
+```bash
+cp nodes.example.json nodes.json
+```
+
+Exemplo:
+
+```json
+{
+  "fleet_token": "TOKEN-CENTRAL",
+  "timeout_seconds": 3,
+  "nodes": [
+    {
+      "id": "servidor-principal",
+      "name": "Servidor principal",
+      "url": "http://127.0.0.1:8070",
+      "token": "TOKEN-NO-1"
+    },
+    {
+      "id": "auditorio-2",
+      "name": "Nó Auditório 2",
+      "url": "http://192.168.1.50:8070",
+      "token": "TOKEN-NO-2"
+    }
+  ]
+}
+```
+
+Inicie:
+
+```bash
+python bin/fleet_server.py nodes.json --host 127.0.0.1 --port 8050
+```
+
+O painel fica em:
+
+```text
+web/fleet.html
+```
+
+Exemplo:
+
+```text
+http://127.0.0.1:8080/fleet.html?api=http://127.0.0.1:8050#token=TOKEN-CENTRAL
+```
+
+O fleet mostra:
+
+- nós online/offline;
+- latência de consulta;
+- salas de cada nó;
+- PID;
+- portas TCP/WebSocket;
+- microfone;
+- engine;
+- modelo;
+- estado real e desejado.
+
+Também permite iniciar, parar e reiniciar uma instância em qualquer nó cadastrado.
+
+### Segurança multi-nó
+
+Existem dois níveis de token:
+
+```text
+fleet_token
+    |
+    v
+fleet_server
+    |
+    +--> token do nó A
+    +--> token do nó B
+    +--> token do nó C
+```
+
+Assim, o navegador não precisa conhecer os tokens internos de cada máquina.
+
+O arquivo real:
+
+```text
+nodes.json
+```
+
+fica fora do Git.
+
+Para redes maiores, recomenda-se comunicação entre os nós por VPN ou HTTPS,
+evitando expor os control planes diretamente na rede pública.

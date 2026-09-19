@@ -62,7 +62,9 @@ WebRTC VAD
 - seleção de idioma por participante;
 - tradução plugável com cache;
 - suporte a LibreTranslate local/remoto;
-- testes unitários e CI leve no GitHub Actions.
+- testes unitários e CI leve no GitHub Actions;
+- painel administrativo de telemetria em tempo real;
+- métricas de CPU, memória, filas, clientes, idiomas e latência STT.
 
 ## Instalação
 
@@ -404,3 +406,101 @@ Eles verificam:
 
 O workflow em `.github/workflows/tests.yml` executa essa suíte em push e pull
 request.
+
+
+## Painel administrativo
+
+O painel está em:
+
+```text
+web/admin.html
+```
+
+Ele usa o mesmo WebSocket do serviço principal, mas exige token com papel
+`admin`.
+
+Gere um convite administrativo:
+
+```bash
+python bin/generate_room_token.py principal \
+  --role admin \
+  --ttl 7200 \
+  --web-url http://SERVIDOR:8080/admin.html
+```
+
+Abra a URL gerada no navegador. O token continua no fragmento `#token=`.
+
+Depois da autenticação o painel envia:
+
+```json
+{
+  "type": "subscribe_telemetry"
+}
+```
+
+O servidor só aceita essa assinatura quando o papel autenticado é `admin`.
+
+O painel acompanha:
+
+- clientes WebSocket conectados;
+- clientes TCP/Lazarus;
+- distribuição de participantes por idioma;
+- distribuição por papel;
+- número de eventos parciais e finais;
+- latência média do STT;
+- latência P95 do STT;
+- tamanho e capacidade das filas;
+- erros de STT;
+- erros de tradução;
+- parciais descartados;
+- eventos descartados;
+- uptime;
+- engine ativa;
+- CPU do processo;
+- memória residente do processo.
+
+O intervalo padrão é:
+
+```json
+"telemetry_interval_seconds": 2
+```
+
+A telemetria é enviada somente aos administradores que explicitamente se
+inscreverem. Participantes normais continuam recebendo apenas legendas.
+
+CPU e memória são obtidas com `psutil`. Caso essa biblioteca não esteja
+disponível, o restante do painel continua funcionando e esses dois indicadores
+aparecem como indisponíveis.
+
+### Exemplo de evento de telemetria
+
+```json
+{
+  "type": "telemetry",
+  "room": "principal",
+  "session_id": "...",
+  "engine": "faster-whisper",
+  "uptime_seconds": 845,
+  "events": {
+    "partial": 183,
+    "final": 61,
+    "total": 244,
+    "dropped": 0
+  },
+  "stt": {
+    "errors": 0,
+    "dropped_partials": 2,
+    "latency_avg_ms": 412.5,
+    "latency_p95_ms": 680
+  },
+  "clients": {
+    "tcp": 1,
+    "websocket": 18,
+    "by_language": {
+      "pt-BR": 12,
+      "en": 4,
+      "es": 2
+    }
+  }
+}
+```

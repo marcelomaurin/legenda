@@ -29,12 +29,6 @@
         <PackageName Value="lnetvisual"/>
       </Item>
       <Item>
-        <PackageName Value="indylaz"/>
-      </Item>
-      <Item>
-        <PackageName Value="industrial"/>
-      </Item>
-      <Item>
         <PackageName Value="LCL"/>
       </Item>
     </RequiredPackages>

@@ -6,10 +6,6 @@ on:
     paths:
       - "src/**"
       - ".github/workflows/lazarus-build.yml"
-  pull_request:
-    paths:
-      - "src/**"
-      - ".github/workflows/lazarus-build.yml"
   workflow_dispatch:
 
 jobs:

@@ -547,3 +547,43 @@ LegendaOrchestrator
 
 Essa opção evita introduzir dependência de gerenciadores de serviço de terceiros
 e mantém o mesmo código Python usado no Linux.
+
+
+## Distribuição Windows portátil
+
+O build Windows gera uma distribuição autocontida:
+
+```text
+Legenda-<version>/
+├── python/
+│   ├── python.exe
+│   └── Lib/site-packages/
+├── bin/
+├── web/
+├── corpus/
+├── deploy/
+├── docs/
+├── config.example.json
+├── instances.example.json
+├── nodes.example.json
+└── VERSION.json
+```
+
+O Python embeddable é obtido durante o build e o arquivo `python*._pth` é
+ajustado para habilitar `site` e `Lib\site-packages`.
+
+As dependências são instaladas com wheels binários dentro do próprio pacote.
+
+O computador alvo não precisa ter Python no PATH.
+
+O workflow separa duas responsabilidades:
+
+```text
+tests.yml
+  -> CI leve frequente
+
+windows-release.yml
+  -> build pesado apenas manual/tag
+```
+
+Isso evita reconstruir faster-whisper e suas dependências a cada commit comum.

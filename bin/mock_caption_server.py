@@ -29,14 +29,7 @@ def caption_event(sequence: int, text: str, session_id: str) -> dict:
     }
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=8097)
-    parser.add_argument("--interval", type=float, default=1.0)
-    parser.add_argument("--count", type=int, default=5)
-    args = parser.parse_args()
-
+def serve_client(client: socket.socket, count: int, interval: float, session_id: str) -> None:
     phrases = [
         "Teste de conexão do Legenda.",
         "O protocolo JSONL está funcionando.",
@@ -44,6 +37,22 @@ def main() -> None:
         "Esta execução não utiliza microfone nem reconhecimento de voz.",
         "Teste concluído.",
     ]
+    for i in range(max(1, count)):
+        text = phrases[i % len(phrases)]
+        event = caption_event(i + 1, text, session_id)
+        client.sendall(
+            (json.dumps(event, ensure_ascii=False) + "\n").encode("utf-8")
+        )
+        time.sleep(max(0.0, interval))
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=8097)
+    parser.add_argument("--interval", type=float, default=1.0)
+    parser.add_argument("--count", type=int, default=5)
+    args = parser.parse_args()
 
     session_id = "mock-" + uuid.uuid4().hex[:8]
 
@@ -56,12 +65,7 @@ def main() -> None:
         client, address = server.accept()
         with client:
             print(f"Cliente conectado: {address[0]}:{address[1]}")
-            for i in range(max(1, args.count)):
-                text = phrases[i % len(phrases)]
-                event = caption_event(i + 1, text, session_id)
-                client.sendall((json.dumps(event, ensure_ascii=False) + "\n").encode("utf-8"))
-                print(text)
-                time.sleep(max(0.05, args.interval))
+            serve_client(client, args.count, args.interval, session_id)
 
 
 if __name__ == "__main__":

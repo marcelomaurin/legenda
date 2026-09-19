@@ -491,3 +491,59 @@ separação entre medição e apresentação e evita que uma visualização alte
 resultado experimental.
 
 O relatório pode ser regenerado sempre que novos benchmarks forem adicionados.
+
+
+## Gestão multi-nó
+
+A camada fleet fica acima dos orquestradores locais:
+
+```text
+                 web/fleet.html
+                       |
+                       v
+                fleet_server.py
+                 /      |      \
+                /       |       \
+               v        v        v
+          Node A     Node B     Node C
+             |          |          |
+      orchestrator orchestrator orchestrator
+          /  \        /  \       /  \
+       salas        salas       salas
+```
+
+O fleet não executa STT. Ele consulta e controla os nós por HTTP.
+
+Cada nó mantém:
+
+- suas portas;
+- seus dispositivos de áudio;
+- seus processos;
+- seu token de controle.
+
+O fleet mantém:
+
+- catálogo de nós;
+- token central;
+- timeout de consulta;
+- visão agregada.
+
+O navegador recebe somente o estado consolidado e envia ações ao fleet. O token
+interno de cada nó fica apenas em `nodes.json`.
+
+## Windows
+
+No Windows, o processo supervisor é iniciado pelo Task Scheduler:
+
+```text
+Boot
+  |
+  v
+LegendaOrchestrator
+  |
+  v
+.venv\Scripts\python.exe bin\orchestrator.py instances.json
+```
+
+Essa opção evita introduzir dependência de gerenciadores de serviço de terceiros
+e mantém o mesmo código Python usado no Linux.

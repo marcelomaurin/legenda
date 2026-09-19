@@ -42,7 +42,7 @@ class OrchestratorTests(unittest.TestCase):
             self.assertEqual(generated["active_room"], "sala1")
             self.assertEqual(generated["port"], 8197)
             self.assertEqual(generated["input_device_index"], 3)
-            self.assertTrue(str(orchestrator.instances[0].config_path).startswith(str(root)))
+            self.assertTrue(orchestrator.instances[0].config_path.resolve().is_relative_to(root.resolve()))
 
             status = orchestrator.status_snapshot()
             self.assertEqual(status["type"], "orchestrator_status")

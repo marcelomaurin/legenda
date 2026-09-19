@@ -12,6 +12,11 @@ from typing import Any
 from urllib.parse import urlparse
 
 try:
+    from .security_utils import bearer_matches, require_token_for_remote_bind
+except ImportError:
+    from security_utils import bearer_matches, require_token_for_remote_bind
+
+try:
     from .prepare_corpus_manifest import load_references
 except ImportError:
     from prepare_corpus_manifest import load_references
@@ -82,7 +87,10 @@ def make_handler(app: CorpusCollectionApp):
         def _authorized(self) -> bool:
             if not app.token:
                 return True
-            return self.headers.get("Authorization", "") == f"Bearer {app.token}"
+            return bearer_matches(
+                self.headers.get("Authorization", ""),
+                app.token,
+            )
 
         def _json(self, status: int, payload: Any) -> None:
             body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -167,6 +175,7 @@ def main() -> None:
     args = parser.parse_args()
 
     app = CorpusCollectionApp(Path(args.corpus_dir), args.token)
+    require_token_for_remote_bind(args.host, args.token, "corpus-collector")
     server = ThreadingHTTPServer((args.host, args.port), make_handler(app))
 
     print(f"Corpus collector: http://{args.host}:{args.port}")

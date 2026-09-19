@@ -290,3 +290,50 @@ As métricas principais são:
 
 O resultado por amostra preserva referência e hipótese, permitindo inspecionar
 quais termos causam mais erro e avaliar o efeito de hotwords.
+
+
+## Descoberta e seleção de áudio
+
+`bin/audio_devices.py` encapsula a enumeração PyAudio. O servidor expõe dois
+comandos administrativos:
+
+```text
+list_audio_devices
+set_audio_device
+```
+
+A listagem pode ser feita sem interromper a captura. A troca é persistida na
+configuração, mas só é aplicada após reinício, porque substituir um stream PyAudio
+ativo no meio da sessão poderia perder frames ou criar inconsistência temporal.
+
+## Orquestração multi-instância
+
+O `bin/orchestrator.py` implementa um supervisor simples de processos:
+
+```text
+instances.json
+     |
+     v
+Orchestrator
+     |
+     +-- config sala A -> srvouve.py
+     |
+     +-- config sala B -> srvouve.py
+     |
+     +-- config sala C -> srvouve.py
+```
+
+Cada processo recebe seu arquivo via variável:
+
+```text
+LEGENDA_CONFIG=/caminho/instancia.json
+```
+
+O servidor passa a aceitar essa variável no carregamento da configuração.
+
+Os caminhos relativos do `base_config` e `runtime_dir` são resolvidos em
+relação ao arquivo de definição de instâncias, permitindo rodar o orquestrador
+como serviço sem depender do diretório corrente.
+
+O supervisor reinicia processos que terminem inesperadamente e mantém portas,
+dispositivos, diretórios de transcrição e identificadores de sala isolados.

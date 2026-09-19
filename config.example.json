@@ -1,6 +1,8 @@
 {
   "host": "0.0.0.0",
   "port": 8097,
+  "websocket_enabled": true,
+  "websocket_port": 8098,
   "language": "pt-BR",
   "phrase_time_limit": 5,
   "ambient_noise_duration": 1.0,

@@ -1,7 +1,8 @@
 import time
 import unittest
+from unittest.mock import patch
 
-from bin.room_auth import RoomTokenManager
+from bin.room_auth import RoomClaims, RoomTokenManager
 
 
 class RoomTokenTests(unittest.TestCase):
@@ -23,6 +24,11 @@ class RoomTokenTests(unittest.TestCase):
         token = self.manager.create("principal", ttl_seconds=-1)
         with self.assertRaises(ValueError):
             self.manager.verify(token)
+
+    def test_expiration_boundary_is_expired(self):
+        claims = RoomClaims(room="principal", role="viewer", exp=100)
+        with patch("bin.room_auth.time.time", return_value=100):
+            self.assertTrue(claims.expired())
 
     def test_tampered_token(self):
         token = self.manager.create("principal", ttl_seconds=60)

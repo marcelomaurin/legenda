@@ -48,7 +48,7 @@ def levenshtein(ref: list[str], hyp: list[str]) -> int:
 
 def word_error_rate(reference: str, hypothesis: str) -> float:
     ref = normalize_text(reference)
-    hyp = normalize_text(hyp)
+    hyp = normalize_text(hypothesis)
     if not ref:
         return 0.0 if not hyp else 1.0
     return levenshtein(ref, hyp) / len(ref)

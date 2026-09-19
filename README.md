@@ -1542,3 +1542,61 @@ Não publique a porta TCP 8097 diretamente na Internet.
 
 O WebSocket, que possui autenticação de sala, deve ser preferido para novos
 clientes.
+
+
+## Homologação operacional
+
+Foi adicionado um guia específico em:
+
+```text
+docs/OPERATIONS.md
+```
+
+Ele cobre:
+
+- teste de carga WebSocket com múltiplos clientes;
+- teste de queda e recuperação do orquestrador;
+- política automática de retenção;
+- rotação de logs;
+- implantação HTTPS/WSS com Caddy ou Nginx;
+- teste prolongado de estabilidade;
+- checklist para criação da versão `v2.0.0-rc1`.
+
+### Teste de carga
+
+```bash
+python bin/load_test_websocket.py \
+  --url ws://127.0.0.1:8098 \
+  --room principal \
+  --token TOKEN \
+  --clients 50 \
+  --seconds 60
+```
+
+### Retenção
+
+A configuração padrão mantém 30 dias:
+
+```json
+"retention_days": 30,
+"retention_extra_dirs": ["logs"]
+```
+
+Auditoria sem exclusão:
+
+```bash
+python bin/retention.py --dir transcripts --days 30 --dry-run
+```
+
+### HTTPS/WSS
+
+Foram adicionados exemplos de produção:
+
+```text
+deploy/Caddyfile.example
+deploy/nginx-legenda.conf.example
+deploy/logrotate-legenda.example
+```
+
+Os exemplos publicam WebSocket e APIs administrativas por HTTPS/WSS, mas
+deliberadamente não publicam o TCP legado 8097.

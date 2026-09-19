@@ -380,3 +380,52 @@ grupo:
 
 Com isso, a seleção do motor/modelo pode considerar o perfil de erro do domínio,
 e não apenas um único número agregado.
+
+
+## Control plane do orquestrador
+
+O plano de controle fica fora dos processos de STT:
+
+```text
+web/orchestrator.html
+          |
+          | HTTP + Bearer token
+          v
+orchestrator_control.py
+          |
+          v
+     Orchestrator
+      /   |   \
+     /    |    \
+sala A  sala B  sala C
+```
+
+O supervisor mantém dois estados distintos:
+
+- `running`: estado real do processo;
+- `desired_running`: intenção administrativa.
+
+Se `desired_running=true` e o processo cair, o watchdog o reinicia. Se um
+administrador executar `stop`, o estado desejado passa para falso e a sala
+permanece desligada.
+
+A API não manipula diretamente áudio nem STT. Ela controla apenas o ciclo de vida
+dos processos, reduzindo acoplamento entre administração e processamento de fala.
+
+## Implantação como serviço
+
+O unit `deploy/legenda-orchestrator.service` usa um único processo supervisor.
+As instâncias de sala são processos filhos e herdam o ciclo de vida do
+orquestrador.
+
+O serviço usa:
+
+```text
+WorkingDirectory=/opt/legenda
+User=legenda
+Group=audio
+Restart=on-failure
+```
+
+O grupo `audio` é necessário para acesso aos dispositivos de captura em
+instalações Linux típicas.

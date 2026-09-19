@@ -3,6 +3,7 @@
   "port": 8097,
   "websocket_enabled": true,
   "websocket_port": 8098,
+  "websocket_auth_timeout_seconds": 10,
 
   "active_room": "principal",
   "room_name": "Sala principal",

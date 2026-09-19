@@ -11,7 +11,10 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-from prepare_corpus_manifest import load_references
+try:
+    from .prepare_corpus_manifest import load_references
+except ImportError:
+    from prepare_corpus_manifest import load_references
 
 
 SAFE_ID = re.compile(r"^[A-Za-z0-9._-]+$")

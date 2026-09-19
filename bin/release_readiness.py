@@ -23,6 +23,8 @@ REQUIRED_FILES = [
     "bin/load_test_websocket.py",
     "bin/protocol_soak.py",
     "bin/retention.py",
+    "bin/benchmark_suite.py",
+    "benchmark_suite.example.json",
     "web/index.html",
     "web/admin.html",
     "web/fleet.html",

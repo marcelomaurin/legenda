@@ -8,7 +8,6 @@
     :root {
       color-scheme: light dark;
       --font-size: clamp(2rem, 6vw, 5.5rem);
-      --panel-opacity: .90;
     }
 
     * { box-sizing: border-box; }
@@ -68,6 +67,17 @@
       min-height: 2.4em;
       display: grid;
       place-items: center;
+      transition: opacity .12s ease;
+    }
+
+    #caption.partial {
+      opacity: .72;
+      font-style: italic;
+    }
+
+    #caption.final {
+      opacity: 1;
+      font-style: normal;
     }
 
     .controls {
@@ -76,15 +86,20 @@
       flex-wrap: wrap;
     }
 
-    button, input {
+    button {
       font: inherit;
       padding: .55rem .75rem;
+      cursor: pointer;
     }
 
-    button { cursor: pointer; }
+    #metrics {
+      opacity: .78;
+      font-size: .9rem;
+    }
 
     @media (prefers-contrast: more) {
       #caption { outline: .15em solid currentColor; }
+      #caption.partial { opacity: 1; }
     }
   </style>
 </head>
@@ -103,11 +118,12 @@
   </header>
 
   <main aria-live="polite" aria-atomic="true">
-    <div id="caption">Aguardando legenda…</div>
+    <div id="caption" class="final">Aguardando legenda…</div>
   </main>
 
   <footer>
     <span id="session">Sessão: —</span>
+    <span id="metrics">—</span>
     <span id="clock">—</span>
   </footer>
 
@@ -117,9 +133,11 @@
     const statusText = document.querySelector("#statusText");
     const session = document.querySelector("#session");
     const clock = document.querySelector("#clock");
+    const metrics = document.querySelector("#metrics");
 
     let fontScale = 1;
     let retryTimer = null;
+    let lastSequence = 0;
 
     function websocketUrl() {
       const params = new URLSearchParams(location.search);
@@ -134,6 +152,27 @@
       statusText.textContent = connected ? "Ao vivo" : "Desconectado";
     }
 
+    function renderCaption(data) {
+      if (!["partial", "caption"].includes(data.type)) return;
+      if (Number(data.sequence || 0) < lastSequence) return;
+
+      lastSequence = Number(data.sequence || lastSequence);
+      caption.textContent = data.text || "";
+      caption.className = data.final ? "final" : "partial";
+
+      session.textContent = "Sessão: " + (data.session_id || "—");
+      clock.textContent = data.timestamp
+        ? new Date(data.timestamp).toLocaleTimeString()
+        : "—";
+
+      const mode = data.final ? "final" : "parcial";
+      const latency = Number.isFinite(Number(data.latency_ms))
+        ? `${data.latency_ms} ms`
+        : "—";
+      const engine = data.engine || "STT";
+      metrics.textContent = `${engine} · ${mode} · ${latency}`;
+    }
+
     function connect() {
       clearTimeout(retryTimer);
       const ws = new WebSocket(websocketUrl());
@@ -142,14 +181,7 @@
 
       ws.addEventListener("message", event => {
         try {
-          const data = JSON.parse(event.data);
-          if (data.type !== "caption") return;
-
-          caption.textContent = data.text || "";
-          session.textContent = "Sessão: " + (data.session_id || "—");
-          clock.textContent = data.timestamp
-            ? new Date(data.timestamp).toLocaleTimeString()
-            : "—";
+          renderCaption(JSON.parse(event.data));
         } catch (error) {
           console.error("Evento inválido:", error);
         }

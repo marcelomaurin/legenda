@@ -29,6 +29,10 @@ jobs:
         shell: pwsh
         run: python -m unittest discover -s tests -p "test_*.py"
 
+      - name: Validar prontidão da release
+        shell: pwsh
+        run: python bin/release_readiness.py
+
       - name: Determinar versao
         id: version
         shell: pwsh

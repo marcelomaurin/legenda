@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import socket
 import threading
 import time
@@ -21,6 +22,7 @@ from session_export import SessionWaveRecorder, SubtitleExporter
 from room_auth import RoomTokenManager
 from translation import create_translator, normalize_language
 from telemetry import Telemetry
+from audio_devices import list_input_devices
 
 try:
     from websockets.sync.server import serve as websocket_serve
@@ -441,6 +443,28 @@ class CaptionServer:
 
                 if message.get("type") == "unsubscribe_telemetry":
                     client_info.pop("telemetry", None)
+
+                if message.get("type") == "list_audio_devices":
+                    if client_info.get("role") != "admin":
+                        connection.send(json.dumps({
+                            "type": "error",
+                            "code": "ADMIN_REQUIRED",
+                            "message": "Lista de dispositivos disponível apenas para administradores."
+                        }, ensure_ascii=False))
+                    else:
+                        try:
+                            connection.send(json.dumps({
+                                "type": "audio_devices",
+                                "active_index": self.config.get("input_device_index"),
+                                "devices": list_input_devices(),
+                                "restart_required_to_change": True
+                            }, ensure_ascii=False))
+                        except Exception as exc:
+                            connection.send(json.dumps({
+                                "type": "error",
+                                "code": "AUDIO_DEVICE_ENUMERATION_FAILED",
+                                "message": str(exc)
+                            }, ensure_ascii=False))
         except Exception as exc:
             logging.debug("WebSocket encerrado: %s", exc)
         finally:
@@ -647,7 +671,8 @@ class CaptionServer:
 
 def load_config(path: str = "config.json") -> dict[str, Any]:
     config = DEFAULT_CONFIG.copy()
-    config_path = Path(path)
+    env_path = os.environ.get("LEGENDA_CONFIG")
+    config_path = Path(env_path or path)
 
     if config_path.exists():
         with config_path.open("r", encoding="utf-8") as source:

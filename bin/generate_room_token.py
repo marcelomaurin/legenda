@@ -28,11 +28,11 @@ def main() -> None:
     print(token)
 
     if args.web_url:
-        params = {"room": args.room, "token": token}
+        params = {"room": args.room}
         if args.language:
             params["lang"] = args.language
         sep = "&" if "?" in args.web_url else "?"
-        print(args.web_url + sep + urlencode(params))
+        print(args.web_url + sep + urlencode(params) + "#token=" + token)
 
 
 if __name__ == "__main__":
